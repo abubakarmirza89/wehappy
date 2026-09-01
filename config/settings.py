@@ -2,6 +2,12 @@
 from pathlib import Path
 import environ
 
+# Apply Python 3.14 compatibility patch for Django templates
+try:
+    from config.py314_patch import *  # noqa
+except Exception:
+    pass
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -45,7 +51,7 @@ DJANGO_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # "django.contrib.humanize", # Handy template tags
-    "jazzmin",
+    # "jazzmin",  # Temporarily disabled due to Python 3.14 compatibility issues
     "django.contrib.admin",
     "django.forms",
 ]
@@ -105,19 +111,30 @@ FIXTURE_DIRS = (str(APPS_DIR / "fixtures"),)
 
 # Database
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": "wehappy",
-        "USER": "root",
-        "PASSWORD": "",
-        "HOST": "localhost",  # Set to "localhost" if the database is on the same machine
-        "PORT": "3306",  # Default MySQL port is usually 3306
-        "OPTIONS": {
-            "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
-        },
+# Use SQLite for development by default
+db_engine = env("DB_ENGINE", default="sqlite")
+
+if db_engine == "sqlite":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
+else:  # MySQL
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": env("DB_NAME", default="wehappy"),
+            "USER": env("DB_USER", default="root"),
+            "PASSWORD": env("DB_PASSWORD", default=""),
+            "HOST": env("DB_HOST", default="localhost"),
+            "PORT": env("DB_PORT", default="3306"),
+            "OPTIONS": {
+                "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+            },
+        }
+    }
 
 AUTH_USER_MODEL = "users.User"
 LOGIN_REDIRECT_URL = ""
@@ -221,3 +238,33 @@ SPECTACULAR_SETTINGS = {
 STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY")
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
+
+# ============ CELERY CONFIGURATION ============
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "UTC"
+CELERY_ENABLE_UTC = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+# ============ CHANNEL LAYERS CONFIGURATION ============
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [env("REDIS_URL", default="redis://localhost:6379/1")],
+        },
+    },
+}
+
+# ============ OPENAI CONFIGURATION ============
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+
+# ============ TWILIO CONFIGURATION ============
+TWILIO_ACCOUNT_SID = env("TWILIO_ACCOUNT_SID", default="")
+TWILIO_AUTH_TOKEN = env("TWILIO_AUTH_TOKEN", default="")
+TWILIO_PHONE_NUMBER = env("TWILIO_PHONE_NUMBER", default="")
