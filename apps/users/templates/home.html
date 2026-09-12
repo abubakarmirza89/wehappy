@@ -1,108 +1,57 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Happyzenful App</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f6efff; /* light purple shade */
-            background-image: url('background.jpg'); /* Background image */
-            background-size: cover;
-            background-position: center;
-            color: #554466; /* dark purple shade */
-            text-align: center;
-        }
-        .container {
-            padding: 50px;
-        }
-        h1 {
-            font-size: 48px;
-            margin-bottom: 30px;
-            color: #f28482; /* light peach shade */
-            animation: pulse 2s infinite alternate; /* Animation effect */
-        }
-        p {
-            font-size: 24px;
-            margin-bottom: 40px;
-        }
-        #countdown {
-            font-size: 20px;
-            margin-bottom: 40px;
-        }
-        .progress-bar {
-            width: 80%;
-            background-color: #ffffff; /* White color for progress bar background */
-            border-radius: 10px;
-            margin: 0 auto;
-            overflow: hidden;
-        }
-        .progress-bar-inner {
-            height: 20px;
-            background-color: #f28482; /* light peach shade */
-            width: 0%;
-            text-align: center;
-            line-height: 20px;
-            color: #ffffff; /* White color for text */
-            transition: width 0.5s ease-in-out; /* Smooth transition */
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            100% { transform: scale(1.1); }
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="MindMenta is a calmer way to notice your mood, build healthier habits, and find support when you need it.">
+  <title>MindMenta | Make space for how you feel</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+    :root { --ink:#25233a; --muted:#706c7c; --paper:#fbfaf7; --lavender:#c5b4f2; --lavender-deep:#8068c9; --peach:#f6c8b8; --sage:#d7e9d9; --line:#e6e1dc; --white:#fff; }
+    * { box-sizing:border-box; } html { scroll-behavior:smooth; }
+    body { margin:0; color:var(--ink); background:var(--paper); font-family:'DM Sans',sans-serif; }
+    a { color:inherit; text-decoration:none; } .wrap { width:min(1120px,calc(100% - 40px)); margin:0 auto; }
+    .nav { display:flex; justify-content:space-between; align-items:center; padding:24px 0; }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.02em; }
+    .brand-mark { display:grid; place-items:center; width:36px; height:36px; border-radius:50%; background:var(--ink); color:var(--white); font-size:19px; }
+    .nav-links { display:flex; gap:28px; color:var(--muted); font-size:14px; } .nav-links a:hover { color:var(--ink); }
+    .nav-cta,.primary { display:inline-flex; align-items:center; justify-content:center; border-radius:999px; background:var(--ink); color:var(--white); padding:12px 19px; font-size:14px; font-weight:600; }
+    .hero { display:grid; grid-template-columns:1.05fr .95fr; gap:70px; align-items:center; min-height:650px; padding:72px 0 92px; }
+    .eyebrow { color:var(--lavender-deep); font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+    h1,h2 { font-family:'Playfair Display',serif; letter-spacing:-.04em; line-height:1.03; } h1 { max-width:600px; margin:18px 0; font-size:clamp(48px,7vw,82px); } h2 { margin:0 0 16px; font-size:clamp(36px,5vw,58px); }
+    .hero p { max-width:490px; margin:0 0 28px; color:var(--muted); font-size:18px; line-height:1.65; }
+    .hero-note { display:flex; align-items:center; gap:12px; margin-top:28px; color:var(--muted); font-size:13px; } .avatars { display:flex; }
+    .avatar { display:grid; place-items:center; width:30px; height:30px; margin-right:-7px; border:2px solid var(--paper); border-radius:50%; font-size:13px; }
+    .avatar:nth-child(1) { background:var(--peach); } .avatar:nth-child(2) { background:var(--lavender); } .avatar:nth-child(3) { background:var(--sage); }
+    .phone-stage { position:relative; min-height:470px; display:grid; place-items:center; }
+    .phone { position:relative; width:min(285px,75%); padding:14px; border:8px solid var(--ink); border-radius:36px; background:var(--white); box-shadow:26px 28px 0 var(--lavender); transform:rotate(3deg); }
+    .phone-top { width:70px; height:5px; margin:0 auto 24px; border-radius:9px; background:#d9d5dd; } .phone h3 { margin:0; font-family:'Playfair Display',serif; font-size:26px; } .phone small { color:var(--muted); }
+    .mood-panel { margin-top:22px; padding:18px; border-radius:22px; background:#f1edff; } .mood-panel strong { display:block; margin-bottom:14px; font-size:14px; } .mood-row { display:flex; justify-content:space-between; font-size:25px; }
+    .score { display:flex; justify-content:space-between; align-items:end; margin-top:18px; padding-top:18px; border-top:1px solid var(--line); } .score b { font-size:32px; }
+    .float-note { position:absolute; right:0; bottom:70px; width:180px; padding:16px; border:1px solid var(--line); border-radius:18px; background:var(--white); box-shadow:0 16px 35px rgba(37,35,58,.1); font-size:13px; line-height:1.45; } .float-note b { display:block; margin-bottom:5px; }
+    .band { padding:95px 0; border-top:1px solid var(--line); } .section-intro { display:flex; justify-content:space-between; gap:40px; align-items:end; margin-bottom:38px; } .section-intro p { max-width:390px; margin:0; color:var(--muted); line-height:1.6; }
+    .features { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; } .feature { min-height:245px; padding:26px; border-top:3px solid var(--ink); background:var(--white); } .feature:nth-child(2) { background:var(--lavender); border-color:var(--lavender-deep); } .feature:nth-child(3) { background:var(--sage); border-color:#719878; }
+    .feature-icon { font-size:28px; } .feature h3 { margin:42px 0 10px; font-size:19px; } .feature p { margin:0; color:var(--muted); line-height:1.55; font-size:14px; } .feature:nth-child(2) p,.feature:nth-child(3) p { color:#4f5260; }
+    .closing { display:grid; grid-template-columns:1fr 1fr; gap:50px; align-items:center; } .closing-copy p { max-width:450px; color:var(--muted); line-height:1.65; }
+    .steps { border-left:1px solid var(--line); } .step { display:grid; grid-template-columns:50px 1fr; gap:18px; padding:8px 0 28px 24px; } .step-number { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:var(--ink); color:var(--white); font-size:13px; } .step h3 { margin:3px 0 7px; font-size:17px; } .step p { margin:0; color:var(--muted); font-size:14px; line-height:1.5; }
+    footer { padding:28px 0 38px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; } footer .wrap { display:flex; justify-content:space-between; gap:20px; }
+    @media (max-width:760px) { .wrap { width:min(100% - 28px,560px); } .nav-links { display:none; } .hero { grid-template-columns:1fr; gap:35px; min-height:auto; padding:55px 0 85px; } h1 { font-size:58px; } .phone-stage { min-height:440px; } .float-note { right:2%; bottom:40px; } .section-intro,.closing { grid-template-columns:1fr; display:grid; gap:16px; } .features { grid-template-columns:1fr; } .feature { min-height:210px; } footer .wrap { display:block; } footer p { margin:8px 0 0; } }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Happyzenful App</h1>
-        <p>Brain Health Tracking and Mood Tracking App</p>
-        <div id="countdown">Countdown: 35 days</div>
-        <div class="progress-bar">
-            <div class="progress-bar-inner" id="progress-bar-inner">0%</div>
-        </div>
-    </div>
-
-    <script>
-        // Set the countdown date to February 19th
-        var countDownDate = new Date('February 19, 2024 00:00:00').getTime();
-
-        // Set the launch date to March 25th
-        var launchDate = new Date('March 25, 2024 00:00:00').getTime();
-
-        // Update the countdown every 1 second
-        var x = setInterval(function() {
-            // Get the current date and time
-            var now = new Date().getTime();
-
-            // Calculate the remaining time
-            var distance = launchDate - now;
-
-            // Calculate days, hours, minutes, and seconds
-            var days = Math.floor(distance / (1000 * 60 * 60 * 24));
-            var hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-            var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-            var seconds = Math.floor((distance % (1000 * 60)) / 1000);
-
-            // Update the countdown display
-            document.getElementById("countdown").innerHTML = "Countdown: " + days + "d " + hours + "h " + minutes + "m " + seconds + "s";
-
-            // Calculate the progress bar width
-            var totalMilliseconds = launchDate - countDownDate;
-            var elapsedTime = now - countDownDate;
-            var remainingPercentage = (elapsedTime / totalMilliseconds) * 100;
-            var progressBarWidth = 100 - remainingPercentage;
-            document.getElementById("progress-bar-inner").style.width = progressBarWidth + "%";
-
-            // If the countdown is over, display a message
-            if (distance < 0) {
-                clearInterval(x);
-                document.getElementById("countdown").innerHTML = "EXPIRED";
-                document.getElementById("progress-bar-inner").style.width = "100%";
-            }
-        }, 1000);
-    </script>
-</body>
-</html>
+  <header class="wrap nav">
+    <a class="brand" href="#top"><span class="brand-mark">m</span> MindMenta</a>
+    <nav class="nav-links" aria-label="Main navigation"><a href="#approach">Our approach</a><a href="#how-it-works">How it works</a><a href="/api/docs/">API docs</a></nav>
+    <a class="nav-cta" href="#how-it-works">Get started</a>
+  </header>
+  <main id="top">
+    <section class="wrap hero">
+      <div><div class="eyebrow">A softer way to check in</div><h1>Make space for how you feel.</h1><p>MindMenta helps you notice your mood, understand your patterns, and reach the right support before a hard day gets heavier.</p><a class="primary" href="#how-it-works">Start your wellbeing practice <span aria-hidden="true">&nbsp;→</span></a><div class="hero-note"><div class="avatars"><span class="avatar">☻</span><span class="avatar">✦</span><span class="avatar">◡</span></div><span>Private by design. Built for everyday care.</span></div></div>
+      <div class="phone-stage" aria-label="MindMenta app preview"><div class="phone"><div class="phone-top"></div><small>Good morning, Alex</small><h3>Your mood space</h3><div class="mood-panel"><strong>How are you feeling today?</strong><div class="mood-row"><span>😊</span><span>🌿</span><span>☁️</span><span>🌤️</span></div></div><div class="score"><div><small>Weekly wellbeing</small><br><b>78%</b></div><span>↗</span></div></div><div class="float-note"><b>One honest moment</b>is enough to begin noticing what you need.</div></div>
+    </section>
+    <section class="band" id="approach"><div class="wrap"><div class="section-intro"><h2>Care that meets you where you are.</h2><p>No perfect streaks. No performance pressure. Just small, useful moments that help you feel more in tune with yourself.</p></div><div class="features"><article class="feature"><div class="feature-icon">◌</div><h3>Notice your mood</h3><p>Quick daily check-ins turn a passing feeling into a clearer picture over time.</p></article><article class="feature"><div class="feature-icon">✦</div><h3>Find a next step</h3><p>Personalized suggestions and gentle routines make the next helpful action easier to see.</p></article><article class="feature"><div class="feature-icon">↗</div><h3>Reach real support</h3><p>Connect with therapists or trusted people when self-care needs a little company.</p></article></div></div></section>
+    <section class="band" id="how-it-works"><div class="wrap closing"><div class="closing-copy"><div class="eyebrow">Your pace, your privacy</div><h2>A practice, not another task.</h2><p>MindMenta keeps the experience simple enough for busy mornings and meaningful enough for difficult ones. Your personal mood data stays yours, with sharing designed around consent.</p><a class="primary" href="/api/docs/">Explore the API <span aria-hidden="true">&nbsp;→</span></a></div><div class="steps"><div class="step"><div class="step-number">1</div><div><h3>Check in</h3><p>Choose the moods that feel true today and add a note if you want.</p></div></div><div class="step"><div class="step-number">2</div><div><h3>See the pattern</h3><p>Use your history and wellbeing snapshot to spot what is changing.</p></div></div><div class="step"><div class="step-number">3</div><div><h3>Choose support</h3><p>Try a suggestion, contact a trusted person, or book a therapist session.</p></div></div></div></div></section>
+  </main>
+  <footer><div class="wrap"><strong>MindMenta</strong><span>Make space for how you feel.</span></div></footer>
++</body>
++</html>
