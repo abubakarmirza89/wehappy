@@ -4,16 +4,49 @@ Handles scheduled notifications and background processing
 """
 
 from celery import shared_task
+from django.conf import settings
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from datetime import datetime, timedelta
 from django.utils.timezone import now
+from twilio.rest import Client
 from apps.tracking.models import MoodCheckIn, GratitudeEntry, User, MoodNotification, Relative
 from apps.users.models import User as UserModel
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def send_email_notification(recipient_email, subject, message):
+    """Send a plain email notification to a recipient."""
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=settings.DEFAULT_FROM_EMAIL or 'noreply@wehappy.local',
+        recipient_list=[recipient_email],
+        fail_silently=False,
+    )
+    return True
+
+
+def send_whatsapp_message(to_phone, message):
+    """Send WhatsApp notification if Twilio credentials are configured."""
+    account_sid = getattr(settings, 'TWILIO_ACCOUNT_SID', None)
+    auth_token = getattr(settings, 'TWILIO_AUTH_TOKEN', None)
+    from_whatsapp = getattr(settings, 'TWILIO_WHATSAPP_FROM', None)
+
+    if not all([account_sid, auth_token, from_whatsapp]):
+        logger.warning('Twilio credentials are not configured; skipping WhatsApp notification.')
+        return False
+
+    client = Client(account_sid, auth_token)
+    client.messages.create(
+        body=message,
+        from_=from_whatsapp,
+        to=f'whatsapp:{to_phone}'
+    )
+    return True
 
 
 @shared_task

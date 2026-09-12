@@ -1,11 +1,14 @@
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, mixins, permissions, status, views, viewsets
 from rest_framework.response import Response
-from datetime import datetime
+
+import apps.tracking.tasks as tracking_tasks
 
 from apps.tracking.models import (
     Message, Mood, Relative, Suggestion, MoodCheckIn, ChatConversation, 
-    ChatMessage, MoodNotification, NotificationTemplate, GratitudeEntry
+    ChatMessage, MoodNotification, NotificationTemplate, GratitudeEntry,
+    Workspace, WorkspaceMembership, WorkspaceSupportRequest
 )
 from apps.users.models import Brain_Health_Score, Send_To_Relative, Suggestion_Therapist, Therapist, User
 from apps.users.serializers import UserSerializer
@@ -13,7 +16,8 @@ from apps.users.serializers import UserSerializer
 from .serializers import (
     MoodSerializer, RelativeSerializer, SuggestionSerializer, MoodCheckInSerializer,
     ChatConversationSerializer, ChatMessageSerializer, MoodNotificationSerializer,
-    GratitudeEntrySerializer, NotificationTemplateSerializer
+    GratitudeEntrySerializer, NotificationTemplateSerializer,
+    WorkspaceSerializer, WorkspaceMembershipSerializer, WorkspaceSupportRequestSerializer
 )
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -34,6 +38,13 @@ class RelativeList(
 
     def get_queryset(self):
         return Relative.objects.filter(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -91,7 +102,7 @@ class SuggestionByMoodView(views.APIView):
             suggestion_text = suggestion.suggestion_text
             message_text = message.message_text
             is_urgent = message.is_urgent
-            relatives = user.relative.distinct("name", "email")
+            relatives = user.relatives.all()
             for relative in relatives:
                 message_body = (
                     f"Hey {relative.name}, {user.name} has been feeling {mood.name}.\n\n"
@@ -229,7 +240,7 @@ class ChatConversationViewSet(viewsets.ModelViewSet):
         """End a chat conversation"""
         conversation = self.get_object()
         conversation.is_active = False
-        conversation.ended_at = datetime.now()
+        conversation.ended_at = timezone.now()
         conversation.save()
         
         serializer = self.get_serializer(conversation)
@@ -272,17 +283,20 @@ class MoodNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         
         for mood in mood_check_in.moods.all():
             template = NotificationTemplate.objects.filter(mood=mood).first()
-            if not template:
-                continue
-            
+            message_text = (
+                template.template_text
+                if template
+                else f"{request.user.name} is feeling {mood.name.lower()} today. Please check in and offer support."
+            )
+            notification_type = template.notification_type if template else "neutral"
+
             for relative in relatives:
-                # Create notification for each relative
                 notification = MoodNotification.objects.create(
                     user=request.user,
                     relative=relative,
                     mood_check_in=mood_check_in,
-                    message_text=template.template_text,
-                    notification_type=template.notification_type
+                    message_text=message_text,
+                    notification_type=notification_type
                 )
                 notifications_created.append(notification)
         
@@ -298,6 +312,36 @@ class NotificationTemplateListView(generics.ListAPIView):
     serializer_class = NotificationTemplateSerializer
     permission_classes = [permissions.IsAuthenticated]
     queryset = NotificationTemplate.objects.all()
+
+
+class NotificationDeliveryViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['post'])
+    def send_email(self, request):
+        recipient_email = request.data.get('recipient_email')
+        subject = request.data.get('subject') or 'WeHappy Notification'
+        message = request.data.get('message') or 'You have a new notification.'
+
+        if not recipient_email:
+            return Response({'error': 'recipient_email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        tracking_tasks.send_email_notification(recipient_email, subject, message)
+        return Response({'message': 'Email notification sent successfully.'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def send_whatsapp(self, request):
+        to_phone = request.data.get('to_phone')
+        message = request.data.get('message') or 'You have a new notification from WeHappy.'
+
+        if not to_phone:
+            return Response({'error': 'to_phone is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        sent = tracking_tasks.send_whatsapp_message(to_phone, message)
+        if not sent:
+            return Response({'message': 'WhatsApp message skipped because Twilio is not configured.'}, status=status.HTTP_200_OK)
+
+        return Response({'message': 'WhatsApp notification sent successfully.'}, status=status.HTTP_200_OK)
 
 
 # ============ GRATITUDE VIEWS ============
@@ -330,3 +374,107 @@ class GratitudeEntryViewSet(viewsets.ModelViewSet):
             'message': 'No gratitude entry for today. Create one now!',
             'date': today
         }, status=status.HTTP_204_NO_CONTENT)
+
+
+class WorkspaceViewSet(viewsets.ModelViewSet):
+    """Workspaces for teams, families, and partner circles."""
+    serializer_class = WorkspaceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        owned = Workspace.objects.filter(owner=user)
+        member = Workspace.objects.filter(memberships__user=user, memberships__status='approved')
+        return (owned | member).distinct()
+
+    def perform_create(self, serializer):
+        workspace = serializer.save(owner=self.request.user)
+        WorkspaceMembership.objects.create(
+            workspace=workspace,
+            user=self.request.user,
+            role=WorkspaceMembership.ROLE_OWNER,
+            designation='Owner',
+            status=WorkspaceMembership.STATUS_APPROVED,
+            joined_at=timezone.now()
+        )
+
+    @action(detail=False, methods=['post'])
+    def join(self, request):
+        invite_code = request.data.get('invite_code') or request.query_params.get('invite')
+        if not invite_code:
+            return Response({'error': 'invite_code is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            workspace = Workspace.objects.get(invite_code__iexact=invite_code)
+        except Workspace.DoesNotExist:
+            return Response({'error': 'Invalid invite code'}, status=status.HTTP_404_NOT_FOUND)
+
+        membership, created = WorkspaceMembership.objects.get_or_create(
+            workspace=workspace,
+            user=request.user,
+            defaults={
+                'role': WorkspaceMembership.ROLE_EMPLOYEE,
+                'status': WorkspaceMembership.STATUS_APPROVED if not workspace.is_approval_required else WorkspaceMembership.STATUS_PENDING,
+                'designation': 'Employee'
+            }
+        )
+
+        if not created and membership.status != WorkspaceMembership.STATUS_APPROVED:
+            membership.status = WorkspaceMembership.STATUS_APPROVED if not workspace.is_approval_required else membership.status
+            membership.save()
+
+        return Response({
+            'workspace_id': workspace.id,
+            'status': membership.status,
+            'join_url': workspace.join_url,
+            'message': 'Workspace joined successfully' if membership.status == WorkspaceMembership.STATUS_APPROVED else 'Join request sent for approval'
+        })
+
+    @action(detail=True, methods=['post'])
+    def approve_member(self, request, pk=None):
+        workspace = self.get_object()
+        member_id = request.data.get('member_id')
+        if not member_id:
+            return Response({'error': 'member_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.user != workspace.owner:
+            return Response({'error': 'Only workspace owner can approve members'}, status=status.HTTP_403_FORBIDDEN)
+
+        membership = WorkspaceMembership.objects.filter(workspace=workspace, user_id=member_id).first()
+        if not membership:
+            return Response({'error': 'Membership not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        membership.status = WorkspaceMembership.STATUS_APPROVED
+        membership.joined_at = timezone.now()
+        membership.save()
+        return Response(WorkspaceMembershipSerializer(membership).data)
+
+    @action(detail=True, methods=['post'])
+    def toggle_consent(self, request, pk=None):
+        workspace = self.get_object()
+        membership = WorkspaceMembership.objects.filter(workspace=workspace, user=request.user).first()
+        if not membership:
+            return Response({'error': 'Membership not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        membership.can_share_mood_with_manager = not membership.can_share_mood_with_manager
+        membership.save()
+        return Response(WorkspaceMembershipSerializer(membership).data)
+
+
+class WorkspaceMembershipViewSet(viewsets.ModelViewSet):
+    serializer_class = WorkspaceMembershipSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return WorkspaceMembership.objects.filter(user=self.request.user)
+
+
+class WorkspaceSupportRequestViewSet(viewsets.ModelViewSet):
+    serializer_class = WorkspaceSupportRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return WorkspaceSupportRequest.objects.filter(receiver=self.request.user) | WorkspaceSupportRequest.objects.filter(sender=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(sender=self.request.user)

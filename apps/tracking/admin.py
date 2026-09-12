@@ -2,7 +2,8 @@ from django.contrib import admin
 
 from apps.tracking.models import (
     Message, Mood, Relative, Suggestion, MoodCheckIn, ChatConversation,
-    ChatMessage, MoodNotification, NotificationTemplate, GratitudeEntry
+    ChatMessage, MoodNotification, NotificationTemplate, GratitudeEntry,
+    Workspace, WorkspaceMembership, WorkspaceSupportRequest
 )
 
 
@@ -93,3 +94,25 @@ class GratitudeEntryAdmin(admin.ModelAdmin):
     list_filter = ("date",)
     search_fields = ("user__name", "user__email")
     readonly_fields = ("created_at",)
+
+
+@admin.register(Workspace)
+class WorkspaceAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "invite_code", "is_approval_required", "is_active", "created_at")
+    list_filter = ("is_approval_required", "is_active")
+    search_fields = ("name", "owner__name", "invite_code")
+    readonly_fields = ("invite_code", "slug", "created_at")
+
+
+@admin.register(WorkspaceMembership)
+class WorkspaceMembershipAdmin(admin.ModelAdmin):
+    list_display = ("workspace", "user", "role", "designation", "status", "can_share_mood_with_manager")
+    list_filter = ("role", "status", "can_share_mood_with_manager")
+    search_fields = ("workspace__name", "user__name", "user__email")
+
+
+@admin.register(WorkspaceSupportRequest)
+class WorkspaceSupportRequestAdmin(admin.ModelAdmin):
+    list_display = ("workspace", "sender", "receiver", "is_accepted", "created_at")
+    list_filter = ("is_accepted",)
+    search_fields = ("sender__name", "receiver__name", "workspace__name")

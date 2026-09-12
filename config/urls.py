@@ -5,8 +5,10 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
 from django.conf import settings
 from apps.users.views import (
+    ForgotPasswordView,
     LoginView,
     LogoutView,
+    ResetPasswordView,
     SignupView,
     landing_page
 )
@@ -18,15 +20,15 @@ urlpatterns = [
 
 
     # DRF URL
-    path("api/", include("apps.users.urls", namespace="users")),
-    path("api/", include("apps.tracking.urls", namespace="track")),
+    path("api/users/", include("apps.users.urls", namespace="users")),
+    path("api/tracking/", include("apps.tracking.urls", namespace="track")),
 
     # DRF auth token
     path('api/login/', LoginView.as_view(), name='login'),
     path('api/logout/', LogoutView.as_view(), name='logout'),
     path('api/signup/', SignupView.as_view(), name='signup'),
-
-
+    path('api/forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
+    path('api/reset-password/', ResetPasswordView.as_view(), name='reset-password'),
 
     path("auth-token/", obtain_auth_token),
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),

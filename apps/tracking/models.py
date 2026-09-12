@@ -1,6 +1,9 @@
+import uuid
+
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.utils.text import slugify
 
 User = settings.AUTH_USER_MODEL
 
@@ -17,6 +20,101 @@ class Relative(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Workspace(models.Model):
+    """
+    A private workspace for a team, family, or partner circle.
+    Supports QR invite flow, approval gates, managerial visibility,
+    and consent-based emotional sharing.
+    """
+    owner = models.ForeignKey(User, related_name="owned_workspaces", on_delete=models.CASCADE)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, null=True)
+    slug = models.SlugField(max_length=120, unique=True, blank=True)
+    invite_code = models.CharField(max_length=50, unique=True, blank=True, db_index=True)
+    qr_code_data = models.CharField(max_length=255, blank=True, null=True)
+    is_approval_required = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        if not self.invite_code:
+            self.invite_code = uuid.uuid4().hex[:12].upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def join_url(self):
+        return f"/api/tracking/workspaces/join/?invite={self.invite_code}"
+
+
+class WorkspaceMembership(models.Model):
+    """
+    Membership state for each user inside a workspace.
+    Supports owner/manager/employee hierarchy with explicit consent
+    for sharing mood-based support messages.
+    """
+    ROLE_OWNER = "owner"
+    ROLE_MANAGER = "manager"
+    ROLE_EMPLOYEE = "employee"
+
+    ROLE_CHOICES = [
+        (ROLE_OWNER, "Owner"),
+        (ROLE_MANAGER, "Manager"),
+        (ROLE_EMPLOYEE, "Employee"),
+    ]
+
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
+    workspace = models.ForeignKey(Workspace, related_name="memberships", on_delete=models.CASCADE)
+    user = models.ForeignKey(User, related_name="workspace_memberships", on_delete=models.CASCADE)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_EMPLOYEE)
+    designation = models.CharField(max_length=100, blank=True, default="")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    invited_by = models.ForeignKey(User, related_name="workspace_invites_sent", on_delete=models.SET_NULL, null=True, blank=True)
+    can_share_mood_with_manager = models.BooleanField(default=False)
+    can_receive_support_notifications = models.BooleanField(default=True)
+    joined_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("workspace", "user")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.name} in {self.workspace.name} ({self.role})"
+
+
+class WorkspaceSupportRequest(models.Model):
+    """Support suggestion request generated from a partner's mood state."""
+    workspace = models.ForeignKey(Workspace, related_name="support_requests", on_delete=models.CASCADE)
+    sender = models.ForeignKey(User, related_name="sent_support_requests", on_delete=models.CASCADE)
+    receiver = models.ForeignKey(User, related_name="received_support_requests", on_delete=models.CASCADE)
+    message = models.TextField()
+    is_accepted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Support request: {self.sender.name} -> {self.receiver.name}"
 
 
 class Mood(models.Model):
@@ -75,7 +173,7 @@ class MoodCheckIn(models.Model):
     moods = models.ManyToManyField(Mood, related_name="check_ins")
     notes = models.TextField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
-    date = models.DateField(default=timezone.now)
+    date = models.DateField(default=timezone.localdate)
     
     class Meta:
         ordering = ["-timestamp"]
@@ -180,7 +278,7 @@ class GratitudeEntry(models.Model):
     gratitude_1 = models.TextField()
     gratitude_2 = models.TextField()
     gratitude_3 = models.TextField()
-    date = models.DateField(default=timezone.now)
+    date = models.DateField(default=timezone.localdate)
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:

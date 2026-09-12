@@ -102,6 +102,20 @@
 - Add/Edit/Delete for all entities
 - Filtering and search capabilities
 
+### 10. **Workspace + Team Wellness Workflow** ✅
+- Workspace-based team/group structure for professional use-cases
+- QR invite and shared join link flows for onboarding
+- Owner/Manager/Employee role hierarchy
+- Approval-based access control for enterprise teams
+- Consent-based mood sharing to managers or trusted partners
+- Opt-in support notifications for empathy nudges
+
+**Core concept:**
+- A user creates a workspace and becomes the owner
+- Other users join via QR code or invite code
+- Managers get only aggregate or consent-based visibility
+- Individual raw mood data is never exposed unless the user explicitly opts in
+
 ---
 
 ## ❌ WHAT'S MISSING (Critical Features for MindMenta)

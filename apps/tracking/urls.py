@@ -8,7 +8,11 @@ from apps.tracking.views import (
     ChatMessageListView,
     MoodNotificationViewSet,
     NotificationTemplateListView,
-    GratitudeEntryViewSet
+    NotificationDeliveryViewSet,
+    GratitudeEntryViewSet,
+    WorkspaceViewSet,
+    WorkspaceMembershipViewSet,
+    WorkspaceSupportRequestViewSet
 )
 
 from django.urls import path, include
@@ -22,6 +26,9 @@ router.register(r'mood-check-ins', MoodCheckInViewSet, basename='mood-checkin')
 router.register(r'chat-conversations', ChatConversationViewSet, basename='chat-conversation')
 router.register(r'mood-notifications', MoodNotificationViewSet, basename='mood-notification')
 router.register(r'gratitude-entries', GratitudeEntryViewSet, basename='gratitude-entry')
+router.register(r'workspaces', WorkspaceViewSet, basename='workspace')
+router.register(r'workspace-memberships', WorkspaceMembershipViewSet, basename='workspace-membership')
+router.register(r'support-requests', WorkspaceSupportRequestViewSet, basename='support-request')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -37,6 +44,8 @@ urlpatterns = [
     
     # Notification Templates
     path('notification-templates/', NotificationTemplateListView.as_view(), name='notification-templates'),
+    path('notifications/send-email/', NotificationDeliveryViewSet.as_view({'post': 'send_email'}), name='notification-send-email'),
+    path('notifications/send-whatsapp/', NotificationDeliveryViewSet.as_view({'post': 'send_whatsapp'}), name='notification-send-whatsapp'),
 ]
 
 
