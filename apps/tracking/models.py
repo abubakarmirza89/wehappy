@@ -311,3 +311,25 @@ class GratitudeEntry(models.Model):
     
     def __str__(self):
         return f"{self.user.name} - {self.date}"
+# Hearteli: disclosure is opt-in and scoped to one recipient and one check-in.
+class CircleConnection(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_circle')
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_connections')
+    relationship = models.CharField(max_length=40, default='Friend')
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    may_receive_nudges = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['owner', 'recipient'], name='hearteli_unique_circle')]
+
+
+class EmpathyNudge(models.Model):
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_sent')
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_received')
+    check_in = models.ForeignKey(MoodCheckIn, on_delete=models.CASCADE, related_name='hearteli_nudges')
+    message = models.CharField(max_length=500)
+    support_preference = models.CharField(max_length=120, blank=True)
+    status = models.CharField(max_length=20, choices=[('sent','Sent'),('acknowledged','Acknowledged'),('cannot_help','Cannot help')], default='sent')
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)

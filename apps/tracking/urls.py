@@ -1,3 +1,4 @@
+from .hearteli import ConnectionViewSet, NudgeViewSet
 from apps.tracking.views import (
     RelativeList,
     MoodListView,
@@ -21,6 +22,8 @@ from rest_framework.routers import DefaultRouter
 
 app_name = "tracking"
 router = DefaultRouter()
+router.register(r'hearteli/circle', ConnectionViewSet, basename='hearteli-circle')
+router.register(r'hearteli/nudges', NudgeViewSet, basename='hearteli-nudges')
 router.register(r'relatives', RelativeViewSet)
 router.register(r'mood-check-ins', MoodCheckInViewSet, basename='mood-checkin')
 router.register(r'chat-conversations', ChatConversationViewSet, basename='chat-conversation')

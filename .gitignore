@@ -139,3 +139,6 @@ passenger_wsgi.py
 media/
 
 db.sqlite3
+# Flutter source must be tracked (the generic Python lib/ rule above is broad).
+!mobile/lib/
+!mobile/lib/**
