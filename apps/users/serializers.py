@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from apps.users.models import Appointment, Feedback, Notification, Therapist, UserHistory
+from apps.users.models import Appointment, Feedback, Notification, Therapist, UserHistory, WithdrawalRequest
 
 User = get_user_model()
 
@@ -135,12 +135,12 @@ class UserSignupSerializer(serializers.ModelSerializer):
 class UserAppointmentSerializer(serializers.ModelSerializer):
     url = serializers.HyperlinkedIdentityField(
         view_name="users:appointment-detail", lookup_field="pk")
-    therapist = serializers.ReadOnlyField(source="therapist.user.name")
+    therapist = serializers.ReadOnlyField(source="therapist.name")
 
     class Meta:
         model = Appointment
-        fields = ["id", "url", "therapist", "date",
-                  "time", "location", "reason", "created_at"]
+        fields = ["id", "url", "therapist", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        read_only_fields = ["fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
 
 
 class TherapistAppointmentSerializer(serializers.ModelSerializer):
@@ -154,5 +154,12 @@ class TherapistAppointmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Appointment
-        fields = ["id", "url", "user", "date", "time",
-                  "location", "reason", "status", "created_at"]
+        fields = ["id", "url", "user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        read_only_fields = ["user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "created_at"]
+
+
+class WithdrawalRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WithdrawalRequest
+        fields = ["id", "amount", "payout_account", "status", "admin_note", "created_at", "processed_at"]
+        read_only_fields = ["status", "admin_note", "created_at", "processed_at"]

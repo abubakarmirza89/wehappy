@@ -1,0 +1,28 @@
+test_id,area,step,expected_result,previous_result,actual_result,status,remaining_issue,automated_check
+AUTH-001,Auth,Submit signup with valid name email phone and password,Account is created with success response,Pass,Pass,Passed,None,apps.users.tests.test_auth.AuthAPITests.test_signup_creates_user
+AUTH-002,Auth,Submit signup with duplicate email,400 response with field error,Pass,Pass,Passed,None,apps.users.tests.test_auth.AuthAPITests.test_signup_duplicate_email_is_rejected
+AUTH-003,Auth,Submit login with valid credentials,Token and user id are returned,Pass,Pass,Passed,None,apps.users.tests.test_auth.AuthAPITests.test_login_with_valid_credentials_returns_token
+AUTH-004,Auth,Submit login with invalid credentials,401 response and visible error,Pass,Pass,Passed,None,apps.users.tests.test_auth.AuthAPITests.test_login_with_invalid_credentials_is_rejected
+AUTH-005,Auth,Submit forgot password for existing user,Reset email is sent without exposing account state,Pass,Pass,Passed,None,apps.users.tests.test_auth.AuthAPITests.test_forgot_password_sends_reset_email
+AUTH-006,Auth,Register and remove Firebase device token,Token is linked to user and can be deactivated,Not implemented,Pass,Passed,None,apps.users.tests.test_auth.AuthAPITests.test_device_token_can_be_registered_and_removed
+VALID-001,Mobile validation,Submit login with empty email,Inline email required error and no API call,Not implemented,Implemented,Pending device test,Manual Flutter widget test required,flutter test
+VALID-002,Mobile validation,Submit login with invalid email,Email format error and no API call,Not implemented,Implemented,Pending device test,Manual Flutter widget test required,flutter test
+VALID-003,Mobile validation,Submit password shorter than 8 chars,Password length error and no API call,Not implemented,Implemented,Pending device test,Manual Flutter widget test required,flutter test
+VALID-004,Mobile validation,Submit signup with invalid phone,Phone format error and no API call,Not implemented,Implemented,Pending device test,Manual Flutter widget test required,flutter test
+VALID-005,Mobile feedback,API returns error,Error toast and inline error are shown,Partial,Implemented,Pending device test,Manual Flutter widget test required,flutter test
+MOOD-001,Mood,Load moods for authenticated user,Moods render using img_emoji and name,Pass,Fixed img_emoji mapping,Passed with backend suite,No Android visual check,apps.tracking.tests.test_mood_and_relatives.MoodAndRelativeAPITests.test_moods_list_returns_items
+MOOD-002,Mood,Save today's moods and notes,Check-in is created with selected mood ids and notes,Pass,Pass,Passed,None,apps.tracking.tests.test_mood_and_relatives.MoodAndRelativeAPITests.test_today_check_in_creates_mood_entry
+NOTIFY-001,Email,Send notification through SMTP,Email is queued/sent using configured SMTP backend,Pass,SMTP settings added,Pending provider credentials,Configure EMAIL_HOST and credentials,apps.tracking.tests.test_workspaces_and_notifications.WorkspaceAndNotificationAPITests.test_email_notification_endpoint_sends_email
+NOTIFY-002,FCM,Initialize Firebase on authenticated app,Permission requested and FCM token registered,Not implemented,Scaffolded,Blocked without Firebase config,Add google-services.json/GoogleService-Info.plist and Firebase project,flutter run
+NOTIFY-003,FCM,Receive foreground/background push,Notification is delivered on device,Not implemented,Not verified,Blocked without real Firebase device credentials,Run on physical Android/iOS device,flutter run
+NOTIFY-004,WhatsApp,Send WhatsApp notification,Twilio message is sent or explicit skipped response,Pass,Pass,Passed,None,apps.tracking.tests.test_workspaces_and_notifications.WorkspaceAndNotificationAPITests.test_whatsapp_notification_endpoint_calls_twilio
+FLOW-001,Backend,Run Django system check,No Django configuration issues,Pass,Pass,Passed,None,python manage.py check
+FLOW-001A,Backend,Check migration consistency,New DeviceToken migration matches model,Not implemented,DeviceToken aligned; tracking date drift remains,Pending,Pre-existing tracking 0005 migration is still required,python manage.py makemigrations --check --dry-run
+FLOW-002,Backend,Run automated backend tests,All discovered project tests pass,0 tests discovered by default,17 existing tests pass,Passed,Default discovery does not include nested tests,Run explicit test modules,python manage.py test apps.users.tests.test_auth apps.tracking.tests.test_mood_and_relatives apps.tracking.tests.test_workspaces_and_notifications
+FLOW-003,Web,Open landing page,HTTP 200 MindMenta landing page renders,Placeholder countdown page,HTTP 200 MindMenta page,Passed,None,python manage.py shell
+GAP-001,Mobile screens,Book therapist appointment from mobile,Date time location reason form submits to create-appointment endpoint,Missing,Missing,Open,Appointment form screen still required,Manual review
+GAP-002,Mobile screens,Open chat and send message,Conversation UI sends message and shows bot response,Missing,Missing,Open,Chat screen still required,Manual review
+GAP-003,Mobile screens,Manage relatives,User can add edit delete relatives,Missing,Missing,Open,Relatives screen still required,Manual review
+GAP-004,Mobile screens,Gratitude journal,User can create and edit daily gratitude entry,Missing,Missing,Open,Gratitude screen still required,Manual review
+GAP-005,Mobile screens,Workspace/team flow,User can create join approve and manage consent,Missing,Missing,Open,Workspace screens still required,Manual review
+GAP-006,Mobile QA,Run Flutter analyzer and widget tests,No Dart analyzer errors and widget tests pass,Unavailable,Unavailable,Blocked,Flutter/Dart SDK is not installed on this machine,flutter analyze

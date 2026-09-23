@@ -8,11 +8,13 @@ from apps.users.forms import UserAdminChangeForm, UserAdminCreationForm
 from .models import (
     Appointment,
     Brain_Health_Score,
+    DeviceToken,
     Feedback,
     Send_To_Relative,
     Suggestion_Therapist,
     Therapist,
     UserHistory,
+    WithdrawalRequest,
 )
 
 User = get_user_model()
@@ -64,6 +66,14 @@ class UserAdmin(auth_admin.UserAdmin):
 
 
 admin.site.register(Brain_Health_Score)
+admin.site.register(DeviceToken)
+
+
+@admin.register(WithdrawalRequest)
+class WithdrawalRequestAdmin(admin.ModelAdmin):
+    list_display = ['therapist', 'amount', 'status', 'created_at', 'processed_at']
+    list_filter = ['status']
+    search_fields = ['therapist__email', 'payout_account']
 
 
 @admin.register(Send_To_Relative)

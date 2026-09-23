@@ -24,3 +24,7 @@ ios/Runner/GeneratedPluginRegistrant.*
 .idea/
 .vscode/
 *.iml
+
+# Firebase platform configuration
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist

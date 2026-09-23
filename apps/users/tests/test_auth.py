@@ -7,6 +7,9 @@ from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.users.models import DeviceToken
+from apps.users.models import Appointment, Therapist
+
 User = get_user_model()
 
 
@@ -84,6 +87,39 @@ class AuthAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Logout successful.")
+
+    def test_device_token_can_be_registered_and_removed(self):
+        user = User.objects.create_user(
+            name=self.user_data["name"],
+            email=self.user_data["email"],
+            password=self.user_data["password"],
+            phone_number=self.user_data["phone_number"],
+        )
+        self.client.force_authenticate(user=user)
+        token = "fcm-test-token"
+
+        response = self.client.post(
+            "/api/users/device-token/",
+            {"token": token, "platform": "android"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(DeviceToken.objects.filter(user=user, token=token, is_active=True).exists())
+
+        response = self.client.delete(
+            "/api/users/device-token/",
+            {"token": token},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(DeviceToken.objects.get(token=token).is_active)
+
+    def test_therapist_can_be_created_without_card_details(self):
+        therapist = User.objects.create_user(
+            name='Therapist User', email='therapist@example.com', password='StrongPass123',
+            phone_number='+923001234599', is_therapist=True,
+        )
+        self.assertTrue(Therapist.objects.filter(user=therapist, card_id='').exists())
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_forgot_password_sends_reset_email(self):

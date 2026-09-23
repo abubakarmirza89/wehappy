@@ -70,10 +70,11 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 
 class ChatConversationSerializer(serializers.ModelSerializer):
     messages = ChatMessageSerializer(many=True, read_only=True)
+    therapist_name = serializers.ReadOnlyField(source='therapist.name')
     
     class Meta:
         model = ChatConversation
-        fields = ['id', 'user', 'mood_check_in', 'started_at', 'ended_at', 'is_active', 'summary', 'messages']
+        fields = ['id', 'user', 'therapist', 'therapist_name', 'mood_check_in', 'started_at', 'ended_at', 'is_active', 'summary', 'messages']
         read_only_fields = ['user', 'started_at']
 
 
@@ -109,7 +110,7 @@ class WorkspaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Workspace
         fields = [
-            'id', 'owner', 'owner_name', 'name', 'description', 'slug',
+            'id', 'owner', 'owner_name', 'name', 'description', 'workspace_type', 'subscription_plan', 'slug',
             'invite_code', 'qr_code_data', 'join_url', 'is_approval_required',
             'is_active', 'created_at'
         ]

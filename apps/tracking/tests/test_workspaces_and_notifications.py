@@ -1,11 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from unittest.mock import patch
 
-from apps.tracking.models import Mood, MoodCheckIn, Relative, Workspace, WorkspaceMembership, GratitudeEntry
+from apps.tracking.models import ChatConversation, ChatMessage, Mood, MoodCheckIn, Relative, Workspace, WorkspaceMembership, GratitudeEntry
 
 User = get_user_model()
 
@@ -56,6 +57,80 @@ class WorkspaceAndNotificationAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(
             WorkspaceMembership.objects.filter(workspace=workspace, user=self.member).exists()
+        )
+
+    def test_office_workspace_dashboard_returns_aggregate_wellness_metrics(self):
+        self.client.force_authenticate(user=self.owner)
+
+        workspace = Workspace.objects.create(
+            owner=self.owner,
+            name="Office Wellness",
+            description="Office workspace",
+            workspace_type=Workspace.WORKSPACE_TYPE_OFFICE,
+        )
+        WorkspaceMembership.objects.create(
+            workspace=workspace,
+            user=self.member,
+            role=WorkspaceMembership.ROLE_EMPLOYEE,
+            designation="Employee",
+            status=WorkspaceMembership.STATUS_APPROVED,
+            joined_at=timezone.now(),
+        )
+
+        mood = Mood.objects.create(name="Exhausted", img_emoji=None, score=35)
+        check_in = MoodCheckIn.objects.create(user=self.member, notes="Heavy workload")
+        check_in.moods.add(mood)
+
+        response = self.client.get(f"/api/tracking/workspaces/{workspace.id}/office_dashboard/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["workspace_type"], Workspace.WORKSPACE_TYPE_OFFICE)
+        self.assertEqual(response.data["total_members"], 2)
+        self.assertEqual(response.data["active_members_7d"], 1)
+        self.assertGreater(response.data["average_mood_score"], 0)
+        self.assertEqual(response.data["environment_score"], response.data["average_mood_score"])
+        self.assertIn("environment_breakdown", response.data)
+        self.assertEqual(response.data["environment_breakdown"]["total_check_ins"], 1)
+        self.assertGreaterEqual(response.data["environment_breakdown"]["positive"], 0)
+
+    def test_bulk_invite_adds_existing_users_and_skips_missing_emails(self):
+        self.client.force_authenticate(user=self.owner)
+
+        workspace = Workspace.objects.create(
+            owner=self.owner,
+            name="Office Team",
+            description="Bulk invite test",
+            workspace_type=Workspace.WORKSPACE_TYPE_OFFICE,
+        )
+        second_member = User.objects.create_user(
+            name="Second Member",
+            email="second@example.com",
+            password="StrongPass123",
+            phone_number="+923001234569",
+        )
+
+        response = self.client.post(
+            f"/api/tracking/workspaces/{workspace.id}/bulk_invite/",
+            {"emails": [self.member.email, second_member.email, "missing@example.com"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["invited_count"], 2)
+        self.assertIn("missing@example.com", response.data["skipped_emails"])
+        self.assertTrue(
+            WorkspaceMembership.objects.filter(
+                workspace=workspace,
+                user=self.member,
+                status=WorkspaceMembership.STATUS_APPROVED,
+            ).exists()
+        )
+        self.assertTrue(
+            WorkspaceMembership.objects.filter(
+                workspace=workspace,
+                user=second_member,
+                status=WorkspaceMembership.STATUS_APPROVED,
+            ).exists()
         )
 
     def test_gratitude_entry_can_be_created(self):
@@ -124,3 +199,26 @@ class WorkspaceAndNotificationAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         mock_send_whatsapp.assert_called_once()
+
+    def test_patient_and_therapist_can_message_in_same_conversation(self):
+        therapist = User.objects.create_user(
+            name='Therapist User', email='therapist@example.com', password='StrongPass123',
+            phone_number='+923001234599', is_therapist=True, is_active=True,
+        )
+        conversation = ChatConversation.objects.create(user=self.owner, therapist=therapist)
+
+        self.client.force_authenticate(user=self.owner)
+        response = self.client.post(
+            f'/api/tracking/chat-conversations/{conversation.id}/send_message/',
+            {'message': 'I need support today.'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(ChatMessage.objects.filter(conversation=conversation, sender='user').exists())
+
+        self.client.force_authenticate(user=therapist)
+        response = self.client.post(
+            f'/api/tracking/chat-conversations/{conversation.id}/send_message/',
+            {'message': 'I am here to help.'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(ChatMessage.objects.filter(conversation=conversation, sender='therapist').exists())

@@ -28,9 +28,29 @@ class Workspace(models.Model):
     Supports QR invite flow, approval gates, managerial visibility,
     and consent-based emotional sharing.
     """
+    WORKSPACE_TYPE_FAMILY = "family"
+    WORKSPACE_TYPE_COUPLE = "couple"
+    WORKSPACE_TYPE_OFFICE = "office"
+
+    WORKSPACE_TYPE_CHOICES = [
+        (WORKSPACE_TYPE_FAMILY, "Family"),
+        (WORKSPACE_TYPE_COUPLE, "Couple"),
+        (WORKSPACE_TYPE_OFFICE, "Office"),
+    ]
+
+    SUBSCRIPTION_PLAN_PERSONAL = "personal"
+    SUBSCRIPTION_PLAN_OFFICE_20 = "office_20"
+
+    SUBSCRIPTION_PLAN_CHOICES = [
+        (SUBSCRIPTION_PLAN_PERSONAL, "Personal"),
+        (SUBSCRIPTION_PLAN_OFFICE_20, "Office $20/month"),
+    ]
+
     owner = models.ForeignKey(User, related_name="owned_workspaces", on_delete=models.CASCADE)
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
+    workspace_type = models.CharField(max_length=20, choices=WORKSPACE_TYPE_CHOICES, default=WORKSPACE_TYPE_FAMILY)
+    subscription_plan = models.CharField(max_length=20, choices=SUBSCRIPTION_PLAN_CHOICES, default=SUBSCRIPTION_PLAN_PERSONAL)
     slug = models.SlugField(max_length=120, unique=True, blank=True)
     invite_code = models.CharField(max_length=50, unique=True, blank=True, db_index=True)
     qr_code_data = models.CharField(max_length=255, blank=True, null=True)
@@ -188,6 +208,7 @@ class MoodCheckIn(models.Model):
 class ChatConversation(models.Model):
     """Chatbot conversation with AI counselor"""
     user = models.ForeignKey(User, related_name="chat_conversations", on_delete=models.CASCADE)
+    therapist = models.ForeignKey(User, related_name="therapist_conversations", null=True, blank=True, on_delete=models.SET_NULL)
     mood_check_in = models.ForeignKey(MoodCheckIn, null=True, blank=True, on_delete=models.SET_NULL, related_name="chats")
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
@@ -205,6 +226,7 @@ class ChatMessage(models.Model):
     """Individual messages in a chat conversation"""
     SENDER_CHOICES = [
         ('user', 'User'),
+        ('therapist', 'Therapist'),
         ('bot', 'AI Counselor'),
     ]
     

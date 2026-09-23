@@ -1,4 +1,6 @@
 from django.shortcuts import get_object_or_404
+from django.db import models
+from django.db.models import Avg, Count, Q
 from django.utils import timezone
 from rest_framework import generics, mixins, permissions, status, views, viewsets
 from rest_framework.response import Response
@@ -200,36 +202,40 @@ class ChatConversationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        return ChatConversation.objects.filter(user=self.request.user)
+        return ChatConversation.objects.filter(
+            models.Q(user=self.request.user) | models.Q(therapist=self.request.user)
+        ).distinct()
     
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        therapist_id = self.request.data.get('therapist')
+        therapist = User.objects.filter(id=therapist_id, is_therapist=True, is_active=True).first() if therapist_id else None
+        if therapist_id and therapist is None:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'therapist': 'Active therapist not found.'})
+        serializer.save(user=self.request.user, therapist=therapist)
     
     @action(detail=True, methods=['post'])
     def send_message(self, request, pk=None):
         """Send a message in a conversation"""
         conversation = self.get_object()
+        if request.user not in [conversation.user, conversation.therapist]:
+            return Response({'error': 'Conversation access denied.'}, status=status.HTTP_403_FORBIDDEN)
         message_text = request.data.get('message')
         
         if not message_text:
             return Response({'error': 'Message text is required'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Save user message
+        sender = 'therapist' if conversation.therapist_id == request.user.id else 'user'
         user_message = ChatMessage.objects.create(
             conversation=conversation,
-            sender='user',
+            sender=sender,
             message_text=message_text
         )
         
         # TODO: Call AI service (OpenAI) to generate bot response
-        bot_response = "Thank you for sharing. I'm here to help. Can you tell me more about what you're feeling?"
-        
-        # Save bot response
-        ChatMessage.objects.create(
-            conversation=conversation,
-            sender='bot',
-            message_text=bot_response
-        )
+        if conversation.therapist is None:
+            ChatMessage.objects.create(conversation=conversation, sender='bot', message_text="Thank you for sharing. I'm here to help. Can you tell me more about what you're feeling?")
         
         # Return updated conversation
         serializer = self.get_serializer(conversation)
@@ -389,14 +395,173 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         workspace = serializer.save(owner=self.request.user)
+        if workspace.workspace_type == Workspace.WORKSPACE_TYPE_OFFICE:
+            workspace.subscription_plan = Workspace.SUBSCRIPTION_PLAN_OFFICE_20
+            workspace.save(update_fields=['subscription_plan'])
         WorkspaceMembership.objects.create(
             workspace=workspace,
             user=self.request.user,
             role=WorkspaceMembership.ROLE_OWNER,
-            designation='Owner',
+            designation='Owner' if workspace.workspace_type != Workspace.WORKSPACE_TYPE_OFFICE else 'Admin',
             status=WorkspaceMembership.STATUS_APPROVED,
             joined_at=timezone.now()
         )
+
+    @action(detail=True, methods=['get'])
+    def office_dashboard(self, request, pk=None):
+        workspace = self.get_object()
+
+        if workspace.workspace_type != Workspace.WORKSPACE_TYPE_OFFICE:
+            return Response(
+                {'error': 'This dashboard is only available for office workspaces.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        is_owner = request.user == workspace.owner
+        is_manager = WorkspaceMembership.objects.filter(
+            workspace=workspace,
+            user=request.user,
+            role__in=[WorkspaceMembership.ROLE_OWNER, WorkspaceMembership.ROLE_MANAGER],
+            status=WorkspaceMembership.STATUS_APPROVED,
+        ).exists()
+
+        if not (is_owner or is_manager):
+            return Response(
+                {'error': 'Only the workspace owner or manager can view this dashboard.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        approved_memberships = list(workspace.memberships.filter(status=WorkspaceMembership.STATUS_APPROVED).select_related('user'))
+        owner_present = any(membership.user_id == workspace.owner_id for membership in approved_memberships)
+
+        members_payload = [
+            {
+                'id': membership.user.id,
+                'name': membership.user.name,
+                'email': membership.user.email,
+                'designation': membership.designation,
+                'role': membership.role,
+                'can_share_mood_with_manager': membership.can_share_mood_with_manager,
+            }
+            for membership in approved_memberships
+        ]
+
+        if not owner_present:
+            members_payload.insert(0, {
+                'id': workspace.owner.id,
+                'name': workspace.owner.name,
+                'email': workspace.owner.email,
+                'designation': 'Admin',
+                'role': WorkspaceMembership.ROLE_OWNER,
+                'can_share_mood_with_manager': False,
+            })
+
+        total_members = len(members_payload)
+
+        last_7_days = timezone.now().date() - timezone.timedelta(days=7)
+        active_members_7d = User.objects.filter(
+            workspace_memberships__workspace=workspace,
+            workspace_memberships__status=WorkspaceMembership.STATUS_APPROVED,
+            mood_check_ins__date__gte=last_7_days,
+        ).distinct().count()
+
+        mood_score_values = list(
+            MoodCheckIn.objects.filter(
+                user__workspace_memberships__workspace=workspace,
+                user__workspace_memberships__status=WorkspaceMembership.STATUS_APPROVED,
+                date__gte=last_7_days,
+            ).values_list('moods__score', flat=True)
+        )
+
+        total_check_ins = len(mood_score_values)
+        average_mood_score = round(sum(mood_score_values) / total_check_ins, 2) if total_check_ins else 0
+
+        positive_count = sum(1 for score in mood_score_values if score >= 65)
+        neutral_count = sum(1 for score in mood_score_values if 40 <= score < 65)
+        low_count = sum(1 for score in mood_score_values if score < 40)
+
+        return Response({
+            'workspace_id': workspace.id,
+            'workspace_type': workspace.workspace_type,
+            'name': workspace.name,
+            'total_members': total_members,
+            'active_members_7d': active_members_7d,
+            'average_mood_score': average_mood_score,
+            'environment_score': average_mood_score,
+            'environment_breakdown': {
+                'total_check_ins': total_check_ins,
+                'positive': positive_count,
+                'neutral': neutral_count,
+                'low': low_count,
+            },
+            'members': members_payload,
+        })
+
+    @action(detail=True, methods=['post'])
+    def bulk_invite(self, request, pk=None):
+        workspace = self.get_object()
+
+        if request.user != workspace.owner:
+            return Response(
+                {'error': 'Only the workspace owner can bulk invite members.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if workspace.workspace_type != Workspace.WORKSPACE_TYPE_OFFICE:
+            return Response(
+                {'error': 'Bulk invite is only available for office workspaces.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        emails = request.data.get('emails', [])
+        if not isinstance(emails, list):
+            return Response({'error': 'emails must be a list.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        invited_count = 0
+        skipped_emails = []
+        invited_emails = []
+
+        for raw_email in emails:
+            email = (raw_email or '').strip()
+            if not email:
+                continue
+
+            user = User.objects.filter(email__iexact=email).first()
+            if not user:
+                skipped_emails.append(email)
+                continue
+
+            membership, created = WorkspaceMembership.objects.get_or_create(
+                workspace=workspace,
+                user=user,
+                defaults={
+                    'role': WorkspaceMembership.ROLE_EMPLOYEE,
+                    'designation': 'Employee',
+                    'status': WorkspaceMembership.STATUS_APPROVED,
+                    'invited_by': request.user,
+                    'joined_at': timezone.now(),
+                },
+            )
+
+            if created:
+                invited_count += 1
+                invited_emails.append(user.email)
+            else:
+                if membership.status != WorkspaceMembership.STATUS_APPROVED:
+                    membership.status = WorkspaceMembership.STATUS_APPROVED
+                    membership.invited_by = request.user
+                    membership.joined_at = timezone.now()
+                    membership.save()
+                invited_emails.append(user.email)
+
+        return Response({
+            'workspace_id': workspace.id,
+            'workspace_type': workspace.workspace_type,
+            'invited_count': invited_count,
+            'skipped_emails': skipped_emails,
+            'invited_emails': invited_emails,
+            'message': 'Bulk invite completed successfully.'
+        })
 
     @action(detail=False, methods=['post'])
     def join(self, request):

@@ -7,7 +7,11 @@ from apps.users.views import (
     UserHistoryListAPIView,
     AppointmentViewSet,
     NotificationViewSet,
-    UserViewSet
+    UserViewSet,
+    DeviceTokenView,
+    TherapistDashboardView,
+    TherapistSettingsView,
+    WithdrawalRequestView,
 )
 
 from .webhooks import stripe_webhook
@@ -16,6 +20,10 @@ app_name = "users"
 
 
 urlpatterns = [
+    path('device-token/', DeviceTokenView.as_view(), name='device-token'),
+    path('therapist/dashboard/', TherapistDashboardView.as_view(), name='therapist-dashboard'),
+    path('therapist/settings/', TherapistSettingsView.as_view(), name='therapist-settings'),
+    path('therapist/withdrawals/', WithdrawalRequestView.as_view(), name='therapist-withdrawals'),
     path('users/',
          UserViewSet.as_view({'get': 'list', }), name='users-list'),
     path('users/<int:pk>/', UserViewSet.as_view(

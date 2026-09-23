@@ -47,7 +47,7 @@ class Therapist(models.Model):
     user = models.OneToOneField(User, related_name="therapist_profile", on_delete=models.CASCADE)
     degrees = models.TextField(null=True, blank=True)
     certifications = models.TextField(null=True, blank=True)
-    card_id = models.CharField(max_length=25)
+    card_id = models.CharField(max_length=25, blank=True, default='')
     hourly_rate = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     is_available = models.BooleanField(default=False)
     is_active = models.BooleanField(default=False)
@@ -69,6 +69,13 @@ class Appointment(models.Model):
     time = models.TimeField()
     location = models.CharField(max_length=200)
     reason = models.CharField(max_length=200)
+    fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    commission = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    therapist_earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    payment_status = models.CharField(max_length=20, choices=(('pending', 'Pending'), ('paid', 'Paid'), ('refunded', 'Refunded')), default='pending')
+    payment_intent_id = models.CharField(max_length=255, blank=True, default='')
+    charge_id = models.CharField(max_length=255, blank=True, default='')
+    refund_id = models.CharField(max_length=255, blank=True, default='')
     status = models.CharField(
         max_length=20,
         choices=(
@@ -128,6 +135,22 @@ class Notification(models.Model):
         return f"{self.recipient.name} - {self.verb}"
 
 
+class DeviceToken(models.Model):
+    """A Firebase Cloud Messaging token registered by a user's device."""
+    user = models.ForeignKey(User, related_name="device_tokens", on_delete=models.CASCADE)
+    token = models.CharField(max_length=512, unique=True)
+    platform = models.CharField(max_length=20, blank=True, default="unknown")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.user.name} - {self.platform}"
+
+
 class Feedback(models.Model):
     user = models.ForeignKey(User, related_name="feedbacks", on_delete=models.CASCADE)
     therapist = models.ForeignKey(User, related_name="feedback_therapist", on_delete=models.CASCADE)
@@ -137,6 +160,21 @@ class Feedback(models.Model):
 
     def __str__(self):
         return f"{self.user.name} - {self.user.email}"
+
+
+class WithdrawalRequest(models.Model):
+    STATUS_CHOICES = (('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected'), ('paid', 'Paid'))
+
+    therapist = models.ForeignKey(User, related_name='withdrawal_requests', on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payout_account = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    admin_note = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
 
 class UserHistory(models.Model):
