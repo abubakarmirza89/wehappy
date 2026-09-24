@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -142,3 +142,9 @@ db.sqlite3
 # Flutter source must be tracked (the generic Python lib/ rule above is broad).
 !mobile/lib/
 !mobile/lib/**
+
+# Django migration history is required for repeatable deployment.
+!apps/users/migrations/
+!apps/users/migrations/*.py
+!apps/tracking/migrations/
+!apps/tracking/migrations/*.py

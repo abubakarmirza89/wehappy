@@ -1,4 +1,4 @@
-from .hearteli import ConnectionViewSet, NudgeViewSet
+from .hearteli import ConnectionViewSet, NudgeViewSet, OutcomeViewSet, PreferencesViewSet, TherapyGrantViewSet, DataControlViewSet
 from apps.tracking.views import (
     RelativeList,
     MoodListView,
@@ -13,7 +13,8 @@ from apps.tracking.views import (
     GratitudeEntryViewSet,
     WorkspaceViewSet,
     WorkspaceMembershipViewSet,
-    WorkspaceSupportRequestViewSet
+    WorkspaceSupportRequestViewSet,
+    WorkspaceResourceViewSet,
 )
 
 from django.urls import path, include
@@ -24,6 +25,10 @@ app_name = "tracking"
 router = DefaultRouter()
 router.register(r'hearteli/circle', ConnectionViewSet, basename='hearteli-circle')
 router.register(r'hearteli/nudges', NudgeViewSet, basename='hearteli-nudges')
+router.register(r'hearteli/outcomes', OutcomeViewSet, basename='hearteli-outcomes')
+router.register(r'hearteli/preferences', PreferencesViewSet, basename='hearteli-preferences')
+router.register(r'hearteli/therapy-context', TherapyGrantViewSet, basename='hearteli-therapy-context')
+router.register(r'hearteli/data', DataControlViewSet, basename='hearteli-data')
 router.register(r'relatives', RelativeViewSet)
 router.register(r'mood-check-ins', MoodCheckInViewSet, basename='mood-checkin')
 router.register(r'chat-conversations', ChatConversationViewSet, basename='chat-conversation')
@@ -32,6 +37,7 @@ router.register(r'gratitude-entries', GratitudeEntryViewSet, basename='gratitude
 router.register(r'workspaces', WorkspaceViewSet, basename='workspace')
 router.register(r'workspace-memberships', WorkspaceMembershipViewSet, basename='workspace-membership')
 router.register(r'support-requests', WorkspaceSupportRequestViewSet, basename='support-request')
+router.register(r'workspace-resources', WorkspaceResourceViewSet, basename='workspace-resource')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -50,5 +56,3 @@ urlpatterns = [
     path('notifications/send-email/', NotificationDeliveryViewSet.as_view({'post': 'send_email'}), name='notification-send-email'),
     path('notifications/send-whatsapp/', NotificationDeliveryViewSet.as_view({'post': 'send_whatsapp'}), name='notification-send-whatsapp'),
 ]
-
-

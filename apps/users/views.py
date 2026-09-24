@@ -18,6 +18,11 @@ from rest_framework.views import APIView
 from django.db.models import Avg, Sum
 from django.utils import timezone
 from django.shortcuts import render
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.throttling import ScopedRateThrottle
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_protect
 
 
 
@@ -29,6 +34,7 @@ from .serializers import (
     UserAppointmentSerializer,
     UserHistorySerializer,
     UserSerializer,
+    TherapistPublicSerializer,
     UserSignupSerializer,
     WithdrawalRequestSerializer,
 )
@@ -39,6 +45,8 @@ User = get_user_model()
 
 
 class LoginView(APIView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "hearteli_auth"
     def post(self, request):
         email = request.data.get('email')
         password = request.data.get('password')
@@ -47,27 +55,22 @@ class LoginView(APIView):
             login(request, user)
             token, _ = Token.objects.get_or_create(user=user)
             
-            # Fetch the average brain health score
-            average_brain_health_score = Brain_Health_Score.objects.aggregate(avg_score=Avg('rating'))['avg_score']
-            
-            # Set average brain health score to 100 if it's null
-            if average_brain_health_score is None:
-                average_brain_health_score = 100
-
             # Create the response data
             user_data = {
                 'token': token.key,
                 'user_id': user.id,
                 'user_name': user.name,
                 'is_therapist': user.is_therapist,
-                'average_brain_health_score': average_brain_health_score
             }
             return Response(user_data)
         else:
             return Response({'error': 'Invalid credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
         
 class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
+        Token.objects.filter(user=request.user).delete()
         logout(request)
         return Response({'message': 'Logout successful.'})
 
@@ -97,6 +100,8 @@ class DeviceTokenView(APIView):
 
 class ForgotPasswordView(APIView):
     permission_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "hearteli_auth"
 
     def post(self, request):
         email = request.data.get('email')
@@ -113,13 +118,13 @@ class ForgotPasswordView(APIView):
         reset_link = f"{request.build_absolute_uri('/reset-password/')}?uid={uid}&token={token}"
 
         send_mail(
-            subject='Reset your WeHappy password',
+            subject='Reset your Hearteli password',
             message=(
                 f"Hi {user.name},\n\n"
                 f"Use the following link to reset your password:\n{reset_link}\n\n"
                 "If you did not request this, you can ignore this email."
             ),
-            from_email=settings.DEFAULT_FROM_EMAIL or 'noreply@wehappy.local',
+            from_email=settings.DEFAULT_FROM_EMAIL or 'noreply@hearteli.local',
             recipient_list=[user.email],
             fail_silently=False,
         )
@@ -129,6 +134,8 @@ class ForgotPasswordView(APIView):
 
 class ResetPasswordView(APIView):
     permission_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "hearteli_auth"
 
     def post(self, request):
         uid = request.data.get('uid')
@@ -147,12 +154,19 @@ class ResetPasswordView(APIView):
         if not default_token_generator.check_token(user, token):
             return Response({'error': 'Invalid or expired reset token.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as error:
+            return Response({'new_password': error.messages}, status=status.HTTP_400_BAD_REQUEST)
         user.set_password(new_password)
-        user.save()
+        user.save(update_fields=['password'])
+        Token.objects.filter(user=user).delete()
         return Response({'message': 'Password reset successful.'}, status=status.HTTP_200_OK)
 
 
 class SignupView(APIView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "hearteli_auth"
     def post(self, request):
         serializer = UserSignupSerializer(data=request.data)
         if serializer.is_valid():
@@ -160,7 +174,7 @@ class SignupView(APIView):
             username = serializer.validated_data['name']
             password = serializer.validated_data['password']
             phone_number = serializer.validated_data['phone_number']
-            is_therapist = serializer.validated_data['is_therapist']
+            is_therapist = False
             if not User.objects.filter(name=username).exists():
                 user = User.objects.create_user(
                     name=username, password=password, email=email, phone_number=phone_number, is_therapist=is_therapist)
@@ -171,12 +185,19 @@ class SignupView(APIView):
 
 
 class UserViewSet(RetrieveModelMixin, ListModelMixin, DestroyModelMixin, UpdateModelMixin, viewsets.GenericViewSet):
-    queryset = User.objects.all()
     serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return User.objects.filter(pk=self.request.user.pk)
+
+    def destroy(self, request, *args, **kwargs):
+        return Response({'detail': 'Use the password-confirmed Hearteli data deletion flow.'},
+                        status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 class TherapistListViewSet(ListAPIView):
-    serializer_class = UserSerializer
+    serializer_class = TherapistPublicSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -184,7 +205,7 @@ class TherapistListViewSet(ListAPIView):
     
 class TherapistProfileViewSet(RetrieveAPIView):
     queryset = User.objects.all()
-    serializer_class = UserSerializer
+    serializer_class = TherapistPublicSerializer
     permission_classes = [IsAuthenticated]
 
     def retrieve(self, request, *args, **kwargs):
@@ -339,6 +360,7 @@ class FeedbackCreateView(CreateAPIView):
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
@@ -346,9 +368,38 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class UserHistoryListAPIView(ListAPIView):
-    queryset = UserHistory.objects.all()
     serializer_class = UserHistorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return UserHistory.objects.filter(user=self.request.user)
 
 
 def landing_page(request):
     return render(request, 'home.html')
+
+@csrf_protect
+@require_http_methods(["GET", "POST"])
+def reset_password_page(request):
+    uid = request.GET.get('uid') or request.POST.get('uid')
+    token = request.GET.get('token') or request.POST.get('token')
+    error = None
+    completed = False
+    try:
+        user = User.objects.get(pk=urlsafe_base64_decode(uid).decode())
+        valid = default_token_generator.check_token(user, token)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+        valid = False
+    if request.method == 'POST' and valid:
+        password = request.POST.get('password', '')
+        try:
+            validate_password(password, user=user)
+            user.set_password(password)
+            user.save(update_fields=['password'])
+            Token.objects.filter(user=user).delete()
+            completed = True
+        except DjangoValidationError as exc:
+            error = ' '.join(exc.messages)
+    return render(request, 'reset_password.html', {
+        'uid': uid, 'token': token, 'valid': valid, 'completed': completed, 'error': error})

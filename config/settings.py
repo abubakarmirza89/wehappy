@@ -224,6 +224,7 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_RATES": {"hearteli_auth": "15/hour"},
 }
 
 AUTHENTICATION_CLASSES = [

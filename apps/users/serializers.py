@@ -65,6 +65,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             # "url",
+            "id",
             "name",
             "email",
             "profile_picture",
@@ -121,7 +122,8 @@ class UserSignupSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["name", "email", "password",
-                  "brain_health_score", "phone_number", "is_therapist"]
+                  "phone_number"]
+        extra_kwargs = {"password": {"write_only": True}}
 
     def create(self, validated_data):
         email = validated_data.get("email")
@@ -163,3 +165,17 @@ class WithdrawalRequestSerializer(serializers.ModelSerializer):
         model = WithdrawalRequest
         fields = ["id", "amount", "payout_account", "status", "admin_note", "created_at", "processed_at"]
         read_only_fields = ["status", "admin_note", "created_at", "processed_at"]
+
+
+class TherapistPublicProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Therapist
+        fields = ['degrees', 'certifications', 'hourly_rate', 'is_available']
+
+
+class TherapistPublicSerializer(serializers.ModelSerializer):
+    therapist_profile = TherapistPublicProfileSerializer(read_only=True)
+
+    class Meta:
+        model = User
+        fields = ['id', 'name', 'profile_picture', 'therapist_profile']

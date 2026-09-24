@@ -137,6 +137,23 @@ class WorkspaceSupportRequest(models.Model):
         return f"Support request: {self.sender.name} -> {self.receiver.name}"
 
 
+class WorkspaceResource(models.Model):
+    workspace = models.ForeignKey(Workspace, related_name='resources', on_delete=models.CASCADE)
+    title = models.CharField(max_length=120)
+    description = models.CharField(max_length=250, blank=True)
+    url = models.URLField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class WorkspaceRoleAudit(models.Model):
+    workspace = models.ForeignKey(Workspace, related_name='role_events', on_delete=models.CASCADE)
+    actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+    member = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+    from_role = models.CharField(max_length=20)
+    to_role = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class Mood(models.Model):
     name = models.CharField(max_length=100)
     img_emoji = models.FileField(upload_to="mood/emoji")
@@ -190,8 +207,14 @@ class Message(models.Model):
 class MoodCheckIn(models.Model):
     """Daily mood check-in with multiple mood selections"""
     user = models.ForeignKey(User, related_name="mood_check_ins", on_delete=models.CASCADE)
+    feeling_category = models.CharField(max_length=20, choices=[
+        ('great', 'Great'), ('good', 'Good'), ('okay', 'Okay'),
+        ('not_great', 'Not great'), ('struggling', 'Struggling')], blank=True)
     moods = models.ManyToManyField(Mood, related_name="check_ins")
     notes = models.TextField(null=True, blank=True)
+    context_tags = models.JSONField(default=list, blank=True)
+    support_preferences = models.JSONField(default=list, blank=True)
+    workspace = models.ForeignKey('Workspace', null=True, blank=True, on_delete=models.SET_NULL, related_name='hearteli_check_ins')
     timestamp = models.DateTimeField(auto_now_add=True)
     date = models.DateField(default=timezone.localdate)
     
@@ -318,6 +341,7 @@ class CircleConnection(models.Model):
     relationship = models.CharField(max_length=40, default='Friend')
     accepted_at = models.DateTimeField(null=True, blank=True)
     may_receive_nudges = models.BooleanField(default=False)
+    may_receive_preference = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -330,6 +354,48 @@ class EmpathyNudge(models.Model):
     check_in = models.ForeignKey(MoodCheckIn, on_delete=models.CASCADE, related_name='hearteli_nudges')
     message = models.CharField(max_length=500)
     support_preference = models.CharField(max_length=120, blank=True)
+    # Historical nudges predate retry keys; all new API writes require one.
+    idempotency_key = models.UUIDField(null=True, blank=True)
+    delivery_status = models.CharField(max_length=20, choices=[('created', 'Created'), ('queued', 'Queued'), ('sent', 'Sent'), ('failed', 'Failed'), ('delivered', 'Delivered'), ('opened', 'Opened')], default='created')
     status = models.CharField(max_length=20, choices=[('sent','Sent'),('acknowledged','Acknowledged'),('cannot_help','Cannot help')], default='sent')
     created_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['sender', 'idempotency_key'], name='hearteli_unique_nudge_retry')]
+
+
+class SupportOutcome(models.Model):
+    member = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_outcomes')
+    nudge = models.OneToOneField(EmpathyNudge, on_delete=models.CASCADE, related_name='outcome')
+    result = models.CharField(max_length=20, choices=[('yes', 'Yes'), ('a_little', 'A little'), ('not_yet', 'Not yet'), ('prefer_not', 'Prefer not to say')])
+    private_note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ConsentEvent(models.Model):
+    actor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_consent_events')
+    connection = models.ForeignKey(CircleConnection, null=True, on_delete=models.SET_NULL)
+    event = models.CharField(max_length=40)
+    categories = models.JSONField(default=list)
+    occurred_at = models.DateTimeField(auto_now_add=True)
+
+
+class HearteliPreferences(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='hearteli_preferences')
+    use_contexts = models.JSONField(default=list, blank=True)
+    reminder_enabled = models.BooleanField(default=False)
+    nudge_notifications = models.BooleanField(default=True)
+    quiet_start = models.TimeField(null=True, blank=True)
+    quiet_end = models.TimeField(null=True, blank=True)
+    rich_lock_preview = models.BooleanField(default=False)
+
+
+class TherapistContextGrant(models.Model):
+    member = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_therapy_grants')
+    therapist = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_context_received')
+    check_ins = models.ManyToManyField(MoodCheckIn, related_name='hearteli_therapy_grants')
+    include_notes = models.BooleanField(default=False)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

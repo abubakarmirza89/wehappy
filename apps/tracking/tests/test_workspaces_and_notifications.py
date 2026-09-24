@@ -59,7 +59,7 @@ class WorkspaceAndNotificationAPITests(APITestCase):
             WorkspaceMembership.objects.filter(workspace=workspace, user=self.member).exists()
         )
 
-    def test_office_workspace_dashboard_returns_aggregate_wellness_metrics(self):
+    def test_office_workspace_dashboard_suppresses_personal_moods(self):
         self.client.force_authenticate(user=self.owner)
 
         workspace = Workspace.objects.create(
@@ -86,12 +86,10 @@ class WorkspaceAndNotificationAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["workspace_type"], Workspace.WORKSPACE_TYPE_OFFICE)
         self.assertEqual(response.data["total_members"], 2)
-        self.assertEqual(response.data["active_members_7d"], 1)
-        self.assertGreater(response.data["average_mood_score"], 0)
-        self.assertEqual(response.data["environment_score"], response.data["average_mood_score"])
-        self.assertIn("environment_breakdown", response.data)
-        self.assertEqual(response.data["environment_breakdown"]["total_check_ins"], 1)
-        self.assertGreaterEqual(response.data["environment_breakdown"]["positive"], 0)
+        self.assertFalse(response.data["aggregate_available"])
+        self.assertNotIn("average_mood_score", response.data)
+        self.assertNotIn("active_members_7d", response.data)
+        self.assertNotIn("environment_breakdown", response.data)
 
     def test_bulk_invite_adds_existing_users_and_skips_missing_emails(self):
         self.client.force_authenticate(user=self.owner)
@@ -122,14 +120,14 @@ class WorkspaceAndNotificationAPITests(APITestCase):
             WorkspaceMembership.objects.filter(
                 workspace=workspace,
                 user=self.member,
-                status=WorkspaceMembership.STATUS_APPROVED,
+                status=WorkspaceMembership.STATUS_PENDING,
             ).exists()
         )
         self.assertTrue(
             WorkspaceMembership.objects.filter(
                 workspace=workspace,
                 user=second_member,
-                status=WorkspaceMembership.STATUS_APPROVED,
+                status=WorkspaceMembership.STATUS_PENDING,
             ).exists()
         )
 
@@ -149,7 +147,7 @@ class WorkspaceAndNotificationAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(GratitudeEntry.objects.filter(user=self.owner).exists())
 
-    def test_send_to_relatives_creates_notifications(self):
+    def test_legacy_relative_broadcast_is_disabled(self):
         self.client.force_authenticate(user=self.owner)
         mood = Mood.objects.create(name="Happy", img_emoji=None, score=80)
         relative = Relative.objects.create(
@@ -169,12 +167,11 @@ class WorkspaceAndNotificationAPITests(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("notifications", response.data)
-        self.assertGreater(len(response.data["notifications"]), 0)
+        self.assertEqual(response.status_code, status.HTTP_410_GONE)
+        self.assertFalse(self.owner.mood_notifications_sent.exists())
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
-    def test_email_notification_endpoint_sends_email(self):
+    def test_generic_email_endpoint_is_disabled(self):
         self.client.force_authenticate(user=self.owner)
 
         response = self.client.post(
@@ -183,12 +180,11 @@ class WorkspaceAndNotificationAPITests(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("partner@example.com", mail.outbox[0].to)
+        self.assertEqual(response.status_code, status.HTTP_410_GONE)
+        self.assertEqual(len(mail.outbox), 0)
 
     @patch("apps.tracking.tasks.send_whatsapp_message")
-    def test_whatsapp_notification_endpoint_calls_twilio(self, mock_send_whatsapp):
+    def test_generic_whatsapp_endpoint_is_disabled(self, mock_send_whatsapp):
         self.client.force_authenticate(user=self.owner)
 
         response = self.client.post(
@@ -197,8 +193,8 @@ class WorkspaceAndNotificationAPITests(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        mock_send_whatsapp.assert_called_once()
+        self.assertEqual(response.status_code, status.HTTP_410_GONE)
+        mock_send_whatsapp.assert_not_called()
 
     def test_patient_and_therapist_can_message_in_same_conversation(self):
         therapist = User.objects.create_user(

@@ -1,5 +1,5 @@
-name: myapp
-description: WeHappy mental wellness mobile app
+name: hearteli
+description: Hearteli consent-based human support app
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   http: ^1.2.2
   shared_preferences: ^2.3.2
+  flutter_secure_storage: ^9.2.4
+  url_launcher: ^6.3.0
   cupertino_icons: ^1.0.8
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.5
@@ -24,3 +26,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/brand/
+  fonts:
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-Variable.ttf

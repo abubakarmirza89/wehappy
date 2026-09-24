@@ -10,7 +10,7 @@ import apps.tracking.tasks as tracking_tasks
 from apps.tracking.models import (
     Message, Mood, Relative, Suggestion, MoodCheckIn, ChatConversation, 
     ChatMessage, MoodNotification, NotificationTemplate, GratitudeEntry,
-    Workspace, WorkspaceMembership, WorkspaceSupportRequest
+    Workspace, WorkspaceMembership, WorkspaceSupportRequest, WorkspaceResource, WorkspaceRoleAudit
 )
 from apps.users.models import Brain_Health_Score, Send_To_Relative, Suggestion_Therapist, Therapist, User
 from apps.users.serializers import UserSerializer
@@ -19,7 +19,7 @@ from .serializers import (
     MoodSerializer, RelativeSerializer, SuggestionSerializer, MoodCheckInSerializer,
     ChatConversationSerializer, ChatMessageSerializer, MoodNotificationSerializer,
     GratitudeEntrySerializer, NotificationTemplateSerializer,
-    WorkspaceSerializer, WorkspaceMembershipSerializer, WorkspaceSupportRequestSerializer
+    WorkspaceSerializer, WorkspaceMembershipSerializer, WorkspaceSupportRequestSerializer, WorkspaceResourceSerializer
 )
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -246,41 +246,8 @@ class MoodNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     
     @action(detail=False, methods=['post'])
     def send_to_relatives(self, request):
-        """Send mood notifications to relatives"""
-        mood_check_in_id = request.data.get('mood_check_in_id')
-        
-        try:
-            mood_check_in = MoodCheckIn.objects.get(id=mood_check_in_id, user=request.user)
-        except MoodCheckIn.DoesNotExist:
-            return Response({'error': 'Mood check-in not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        relatives = Relative.objects.filter(user=request.user)
-        notifications_created = []
-        
-        for mood in mood_check_in.moods.all():
-            template = NotificationTemplate.objects.filter(mood=mood).first()
-            message_text = (
-                template.template_text
-                if template
-                else f"{request.user.name} is feeling {mood.name.lower()} today. Please check in and offer support."
-            )
-            notification_type = template.notification_type if template else "neutral"
-
-            for relative in relatives:
-                notification = MoodNotification.objects.create(
-                    user=request.user,
-                    relative=relative,
-                    mood_check_in=mood_check_in,
-                    message_text=message_text,
-                    notification_type=notification_type
-                )
-                notifications_created.append(notification)
-        
-        serializer = MoodNotificationSerializer(notifications_created, many=True)
-        return Response({
-            'message': f'Notifications sent to {len(notifications_created)} relatives',
-            'notifications': serializer.data
-        })
+        return Response({'detail': 'Use Hearteli Circle and the reviewed nudge flow.'},
+                        status=status.HTTP_410_GONE)
 
 
 class NotificationTemplateListView(generics.ListAPIView):
@@ -295,32 +262,15 @@ class NotificationDeliveryViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def send_email(self, request):
-        recipient_email = request.data.get('recipient_email')
-        subject = request.data.get('subject') or 'WeHappy Notification'
-        message = request.data.get('message') or 'You have a new notification.'
-
-        if not recipient_email:
-            return Response({'error': 'recipient_email is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        tracking_tasks.send_email_notification(recipient_email, subject, message)
-        return Response({'message': 'Email notification sent successfully.'}, status=status.HTTP_200_OK)
+        return Response({'detail': 'Direct messaging is disabled; use explicit Hearteli consent.'},
+                        status=status.HTTP_410_GONE)
 
     @action(detail=False, methods=['post'])
     def send_whatsapp(self, request):
-        to_phone = request.data.get('to_phone')
-        message = request.data.get('message') or 'You have a new notification from WeHappy.'
-
-        if not to_phone:
-            return Response({'error': 'to_phone is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        sent = tracking_tasks.send_whatsapp_message(to_phone, message)
-        if not sent:
-            return Response({'message': 'WhatsApp message skipped because Twilio is not configured.'}, status=status.HTTP_200_OK)
-
-        return Response({'message': 'WhatsApp notification sent successfully.'}, status=status.HTTP_200_OK)
+        return Response({'detail': 'Direct messaging is disabled; use explicit Hearteli consent.'},
+                        status=status.HTTP_410_GONE)
 
 
-# ============ GRATITUDE VIEWS ============
 class GratitudeEntryViewSet(viewsets.ModelViewSet):
     """
     API for managing daily gratitude entries
@@ -377,6 +327,18 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
             joined_at=timezone.now()
         )
 
+    def perform_update(self, serializer):
+        if serializer.instance.owner_id != self.request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only the owner can change the workspace.')
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.owner_id != self.request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only the owner can remove the workspace.')
+        instance.delete()
+
     @action(detail=True, methods=['get'])
     def office_dashboard(self, request, pk=None):
         workspace = self.get_object()
@@ -428,42 +390,15 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
 
         total_members = len(members_payload)
 
-        last_7_days = timezone.now().date() - timezone.timedelta(days=7)
-        active_members_7d = User.objects.filter(
-            workspace_memberships__workspace=workspace,
-            workspace_memberships__status=WorkspaceMembership.STATUS_APPROVED,
-            mood_check_ins__date__gte=last_7_days,
-        ).distinct().count()
-
-        mood_score_values = list(
-            MoodCheckIn.objects.filter(
-                user__workspace_memberships__workspace=workspace,
-                user__workspace_memberships__status=WorkspaceMembership.STATUS_APPROVED,
-                date__gte=last_7_days,
-            ).values_list('moods__score', flat=True)
-        )
-
-        total_check_ins = len(mood_score_values)
-        average_mood_score = round(sum(mood_score_values) / total_check_ins, 2) if total_check_ins else 0
-
-        positive_count = sum(1 for score in mood_score_values if score >= 65)
-        neutral_count = sum(1 for score in mood_score_values if 40 <= score < 65)
-        low_count = sum(1 for score in mood_score_values if score < 40)
-
+        # Personal check-ins are never used in an organisation dashboard.
+        min_cohort = 10
         return Response({
             'workspace_id': workspace.id,
             'workspace_type': workspace.workspace_type,
             'name': workspace.name,
             'total_members': total_members,
-            'active_members_7d': active_members_7d,
-            'average_mood_score': average_mood_score,
-            'environment_score': average_mood_score,
-            'environment_breakdown': {
-                'total_check_ins': total_check_ins,
-                'positive': positive_count,
-                'neutral': neutral_count,
-                'low': low_count,
-            },
+            'aggregate_available': False,
+            'privacy_threshold': min_cohort,
             'members': members_payload,
         })
 
@@ -507,9 +442,9 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
                 defaults={
                     'role': WorkspaceMembership.ROLE_EMPLOYEE,
                     'designation': 'Employee',
-                    'status': WorkspaceMembership.STATUS_APPROVED,
+                    'status': WorkspaceMembership.STATUS_PENDING,
                     'invited_by': request.user,
-                    'joined_at': timezone.now(),
+                    'joined_at': None,
                 },
             )
 
@@ -517,11 +452,6 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
                 invited_count += 1
                 invited_emails.append(user.email)
             else:
-                if membership.status != WorkspaceMembership.STATUS_APPROVED:
-                    membership.status = WorkspaceMembership.STATUS_APPROVED
-                    membership.invited_by = request.user
-                    membership.joined_at = timezone.now()
-                    membership.save()
                 invited_emails.append(user.email)
 
         return Response({
@@ -586,17 +516,32 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def toggle_consent(self, request, pk=None):
-        workspace = self.get_object()
-        membership = WorkspaceMembership.objects.filter(workspace=workspace, user=request.user).first()
-        if not membership:
-            return Response({'error': 'Membership not found'}, status=status.HTTP_404_NOT_FOUND)
+        # A standing blanket grant to private moods is incompatible with Hearteli.
+        return Response({'detail': 'Use a reviewed, recipient-specific nudge for each share.'},
+                        status=status.HTTP_410_GONE)
 
-        membership.can_share_mood_with_manager = not membership.can_share_mood_with_manager
-        membership.save()
+    @action(detail=True, methods=['post'])
+    def set_member_role(self, request, pk=None):
+        workspace = self.get_object()
+        if workspace.owner_id != request.user.id:
+            return Response({'detail': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
+        role = request.data.get('role')
+        if role not in (WorkspaceMembership.ROLE_MANAGER, WorkspaceMembership.ROLE_EMPLOYEE):
+            return Response({'role': 'Choose manager or employee.'}, status=status.HTTP_400_BAD_REQUEST)
+        membership = WorkspaceMembership.objects.filter(workspace=workspace,
+                                                         user_id=request.data.get('member_id')).first()
+        if not membership or membership.user_id == workspace.owner_id:
+            return Response({'detail': 'Member not found.'}, status=status.HTTP_404_NOT_FOUND)
+        prior_role = membership.role
+        membership.role = role
+        membership.can_share_mood_with_manager = False
+        membership.save(update_fields=['role', 'can_share_mood_with_manager'])
+        WorkspaceRoleAudit.objects.create(workspace=workspace, actor=request.user,
+                                          member=membership.user, from_role=prior_role, to_role=role)
         return Response(WorkspaceMembershipSerializer(membership).data)
 
 
-class WorkspaceMembershipViewSet(viewsets.ModelViewSet):
+class WorkspaceMembershipViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = WorkspaceMembershipSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -604,12 +549,40 @@ class WorkspaceMembershipViewSet(viewsets.ModelViewSet):
         return WorkspaceMembership.objects.filter(user=self.request.user)
 
 
-class WorkspaceSupportRequestViewSet(viewsets.ModelViewSet):
+class WorkspaceSupportRequestViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = WorkspaceSupportRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return WorkspaceSupportRequest.objects.filter(receiver=self.request.user) | WorkspaceSupportRequest.objects.filter(sender=self.request.user)
+        return WorkspaceSupportRequest.objects.filter(Q(receiver=self.request.user) | Q(sender=self.request.user))
+
+
+class WorkspaceResourceViewSet(viewsets.ModelViewSet):
+    serializer_class = WorkspaceResourceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return WorkspaceResource.objects.filter(
+            Q(workspace__owner=user) | Q(workspace__memberships__user=user,
+              workspace__memberships__status=WorkspaceMembership.STATUS_APPROVED)
+        ).distinct()
 
     def perform_create(self, serializer):
-        serializer.save(sender=self.request.user)
+        workspace = serializer.validated_data['workspace']
+        if workspace.owner_id != self.request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only the workspace owner can configure resources.')
+        serializer.save()
+
+    def perform_update(self, serializer):
+        if serializer.instance.workspace.owner_id != self.request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only the workspace owner can configure resources.')
+        serializer.save(workspace=serializer.instance.workspace)
+
+    def perform_destroy(self, instance):
+        if instance.workspace.owner_id != self.request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only the workspace owner can remove resources.')
+        instance.delete()

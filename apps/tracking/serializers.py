@@ -6,7 +6,7 @@ from django.utils import timezone
 from apps.tracking.models import (
     Mood, Relative, Suggestion, MoodCheckIn, ChatConversation, 
     ChatMessage, MoodNotification, NotificationTemplate, GratitudeEntry,
-    Workspace, WorkspaceMembership, WorkspaceSupportRequest
+    Workspace, WorkspaceMembership, WorkspaceSupportRequest, WorkspaceResource
 )
 
 
@@ -51,13 +51,26 @@ class MoodCheckInSerializer(serializers.ModelSerializer):
         queryset=Mood.objects.all(),
         many=True,
         write_only=True,
+        required=False,
         source='moods'
     )
     
+    def validate(self, attrs):
+        if self.instance is None and not attrs.get('feeling_category') and not attrs.get('moods'):
+            raise serializers.ValidationError({'feeling_category': 'Choose a feeling.'})
+        if len(attrs.get('notes') or '') > 500:
+            raise serializers.ValidationError({'notes': 'Keep your private note under 500 characters.'})
+        for field, allowed in [('context_tags', {'work', 'family', 'sleep', 'overwhelmed', 'other'}),
+                               ('support_preferences', {'check_in', 'call', 'practical_help', 'space', 'just_know', 'not_sure'})]:
+            value = attrs.get(field, [])
+            if not isinstance(value, list) or len(value) > 6 or any(item not in allowed for item in value):
+                raise serializers.ValidationError({field: 'Choose from the available options.'})
+        return attrs
+
     class Meta:
         model = MoodCheckIn
-        fields = ['id', 'user', 'moods', 'mood_ids', 'notes', 'timestamp', 'date']
-        read_only_fields = ['user', 'timestamp']
+        fields = ['id', 'user', 'moods', 'mood_ids', 'feeling_category', 'notes', 'context_tags', 'support_preferences', 'timestamp', 'date']
+        read_only_fields = ['user', 'timestamp', 'date']
 
 
 # ============ CHAT SERIALIZERS ============
@@ -139,3 +152,15 @@ class WorkspaceSupportRequestSerializer(serializers.ModelSerializer):
         model = WorkspaceSupportRequest
         fields = ['id', 'workspace', 'sender', 'sender_name', 'receiver', 'receiver_name', 'message', 'is_accepted', 'created_at']
         read_only_fields = ['sender', 'receiver', 'created_at']
+
+
+class WorkspaceResourceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkspaceResource
+        fields = ['id', 'workspace', 'title', 'description', 'url', 'created_at']
+        read_only_fields = ['created_at']
+
+    def validate_url(self, value):
+        if not value.startswith('https://'):
+            raise serializers.ValidationError('Use an HTTPS resource link.')
+        return value
