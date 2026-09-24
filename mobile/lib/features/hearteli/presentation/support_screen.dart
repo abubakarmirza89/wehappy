@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
+import 'nudge_conversation_screen.dart';
 
 class SupportInboxScreen extends StatefulWidget {
   const SupportInboxScreen({super.key, required this.apiClient});
@@ -267,6 +268,16 @@ class _NudgeDetailState extends State<NudgeDetail> {
               icon: const Icon(Icons.copy_outlined),
               label: const Text('Copy a kind opening message'),
             ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => NudgeConversationScreen(apiClient: widget.apiClient,
+                nudgeId: widget.id, otherName: nudge!['viewer_is_recipient'] == true
+                  ? '${nudge!['sender_name']}' : '${nudge!['recipient_name']}'),
+            )),
+            icon: const Icon(Icons.chat_bubble_outline),
+            label: const Text('Open support conversation'),
+          ),
           const SizedBox(height: 8),
           Text(
             'Status: ${nudge!['delivery_status']}. An acknowledgement does not mean support has happened.',

@@ -8,6 +8,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
 import 'safety_screen.dart';
+import 'feel_better_screen.dart';
 
 class CheckInScreen extends StatefulWidget {
   const CheckInScreen({super.key, required this.apiClient, required this.userId, this.onComplete});
@@ -186,11 +187,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         },
       );
       if (mounted) {
-        showCalmMessage(
-          context,
-          'Nudge created. Check its delivery status in Support history.',
-        );
-        widget.onComplete?.call();
+        _showProgress();
       }
     } catch (e) {
       if (mounted) setState(() => error = '$e');
@@ -198,6 +195,13 @@ class _CheckInScreenState extends State<CheckInScreen> {
       if (mounted) setState(() => busy = false);
     }
   }
+
+  void _showProgress() => Navigator.push(context, MaterialPageRoute(
+    builder: (_) => FeelBetterScreen(apiClient: widget.apiClient, onDone: () {
+      Navigator.pop(context);
+      widget.onComplete?.call();
+    }),
+  ));
 
   String _preferenceText() => preferences
       .map(
@@ -414,7 +418,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                           ),
                           const SizedBox(height: 12),
                           OutlinedButton(
-                            onPressed: widget.onComplete,
+                            onPressed: _showProgress,
                             child: const Text('Done — keep private'),
                           ),
                         ],

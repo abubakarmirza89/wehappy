@@ -12,7 +12,7 @@ from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.response import Response
 
 from .models import (CircleConnection, ConsentEvent, EmpathyNudge,
-                     HearteliPreferences, MoodCheckIn, SupportOutcome, TherapistContextGrant)
+                     HearteliPreferences, MoodCheckIn, NudgeMessage, SupportOutcome, TherapistContextGrant)
 from apps.users.models import User
 
 
@@ -133,6 +133,25 @@ class NudgeSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class NudgeMessageSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source='author.name', read_only=True)
+    is_mine = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NudgeMessage
+        fields = ['id', 'author_name', 'is_mine', 'body', 'created_at']
+        read_only_fields = ['id', 'author_name', 'is_mine', 'created_at']
+
+    def get_is_mine(self, obj):
+        return obj.author_id == self.context['request'].user.id
+
+    def validate_body(self, value):
+        value = value.strip()
+        if not value:
+            raise ValidationError('Write a message before sending.')
+        return value
+
+
 class NudgeViewSet(viewsets.ModelViewSet):
     serializer_class = NudgeSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -177,6 +196,17 @@ class NudgeViewSet(viewsets.ModelViewSet):
             nudge.delivery_status = 'opened'
             nudge.save(update_fields=['delivery_status'])
         return Response(self.get_serializer(nudge).data)
+
+    @action(detail=True, methods=['get', 'post'])
+    def messages(self, request, pk=None):
+        nudge = self.get_object()
+        if request.method == 'GET':
+            return Response(NudgeMessageSerializer(nudge.conversation_messages.select_related('author'),
+                            many=True, context={'request': request}).data)
+        serializer = NudgeMessageSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(nudge=nudge, author=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def respond(self, request, pk=None):

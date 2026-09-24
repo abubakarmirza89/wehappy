@@ -232,6 +232,22 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 22),
+          const Text('Quick actions', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19)),
+          const SizedBox(height: 10),
+          Row(children: [
+            _QuickAction(icon: Icons.chat_bubble_outline, label: 'Message',
+              onTap: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => SupportInboxScreen(apiClient: widget.apiClient)))),
+            _QuickAction(icon: Icons.send_outlined, label: 'Nudge', onTap: widget.onCheckIn),
+            _QuickAction(icon: Icons.calendar_today_outlined, label: 'Book',
+              onTap: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => TherapyScreen(apiClient: widget.apiClient)))),
+            _QuickAction(icon: Icons.bar_chart_outlined, label: 'Insights',
+              onTap: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => Scaffold(appBar: AppBar(title: const Text('Insights')),
+                  body: InsightsScreen(apiClient: widget.apiClient))))),
+          ]),
+          const SizedBox(height: 22),
           const Text(
             'A kinder way to be there',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19),
@@ -304,6 +320,22 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  @override Widget build(BuildContext context) => Expanded(child: InkWell(
+    onTap: onTap, borderRadius: BorderRadius.circular(14),
+    child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Column(children: [
+      Container(width: 48, height: 48, decoration: BoxDecoration(color: AppColors.blush,
+        borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: AppColors.coral, size: 22)),
+      const SizedBox(height: 6),
+      Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+    ])),
+  ));
 }
 
 class MoreScreen extends StatelessWidget {

@@ -25,6 +25,28 @@ class WorkConsoleTests(TestCase):
         self.assertEqual(self.client.post(path + f'role/{self.member.pk}/',
             {'role': 'manager'}).status_code, 403)
 
+    def test_landing_manager_and_registration(self):
+        self.assertContains(self.client.get('/'), 'Stronger people,')
+        self.member.role = WorkspaceMembership.ROLE_MANAGER
+        self.member.save(update_fields=['role'])
+        self.client.force_login(self.employee)
+        response = self.client.get(f'/work/{self.workspace.pk}/')
+        self.assertContains(response, 'Team Wellbeing')
+        self.assertNotContains(response, 'Invite a member')
+
+    def test_new_owner_can_register_and_create_workplace(self):
+        response = self.client.post('/work/register/', {
+            'name': 'New Owner', 'email': 'new-owner@hearteli.test',
+            'phone_number': '+923001234563', 'password': 'StrongerPass123!',
+            'confirm_password': 'StrongerPass123!'})
+        self.assertRedirects(response, '/work/')
+        response = self.client.post('/work/new/', {'name': 'New Team'})
+        workspace = Workspace.objects.get(name='New Team')
+        self.assertRedirects(response, f'/work/{workspace.pk}/')
+        self.assertTrue(WorkspaceMembership.objects.filter(workspace=workspace,
+            role=WorkspaceMembership.ROLE_OWNER,
+            status=WorkspaceMembership.STATUS_APPROVED).exists())
+
     def test_owner_resources_role_audit_and_private_dashboard(self):
         self.client.force_login(self.owner)
         path = f'/work/{self.workspace.pk}/'

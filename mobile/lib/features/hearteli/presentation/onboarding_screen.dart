@@ -39,14 +39,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                   SizedBox(height: step == 0 ? 90 : 48),
                   if (step == 0) ...[
-                    const Icon(
-                      Icons.favorite_border,
-                      size: 98,
-                      color: AppColors.coral,
-                    ),
-                    const SizedBox(height: 28),
+                    SizedBox(height: 155, child: Stack(children: [
+                      Positioned(left: 4, bottom: 6, child: Container(width: 104, height: 104,
+                        decoration: const BoxDecoration(color: AppColors.blush, shape: BoxShape.circle))),
+                      Positioned(right: 18, top: 0, child: Container(width: 70, height: 70,
+                        decoration: const BoxDecoration(color: AppColors.blush, shape: BoxShape.circle))),
+                      Positioned(right: 48, bottom: 12, child: Container(width: 36, height: 36,
+                        decoration: const BoxDecoration(color: AppColors.blush, shape: BoxShape.circle))),
+                    ])),
+                    const SizedBox(height: 12),
                     const Text(
-                      'Stronger people, together.',
+                      'A kinder way\nto stay connected.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 32,

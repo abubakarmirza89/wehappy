@@ -1,11 +1,15 @@
 """A privacy-constrained, server-rendered workplace console."""
 from django import forms
+from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.password_validation import validate_password
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.utils import timezone
+from django.utils.text import slugify
 from .models import Workspace, WorkspaceMembership, WorkspaceResource, WorkspaceRoleAudit
 from apps.users.models import User
 
@@ -20,6 +24,49 @@ class ResourceForm(forms.ModelForm):
         if not value.startswith('https://'):
             raise forms.ValidationError('Use an HTTPS link.')
         return value
+
+
+class OwnerRegistrationForm(forms.Form):
+    name = forms.CharField(max_length=100)
+    email = forms.EmailField()
+    phone_number = forms.CharField(max_length=20)
+    password = forms.CharField(widget=forms.PasswordInput)
+    confirm_password = forms.CharField(widget=forms.PasswordInput)
+
+    def clean_name(self):
+        name = self.cleaned_data['name'].strip()
+        if User.objects.filter(name__iexact=name).exists():
+            raise forms.ValidationError('This display name is already in use.')
+        return name
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError('Account already exists. Please sign in.')
+        return email
+
+    def clean(self):
+        data = super().clean()
+        if data.get('password') and data.get('confirm_password'):
+            if data['password'] != data['confirm_password']:
+                self.add_error('confirm_password', 'Passwords do not match.')
+            else:
+                validate_password(data['password'])
+        return data
+
+
+@require_http_methods(['GET', 'POST'])
+def register(request):
+    if request.user.is_authenticated:
+        return redirect('hearteli-work-index')
+    form = OwnerRegistrationForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        user = User.objects.create_user(name=form.cleaned_data['name'],
+            email=form.cleaned_data['email'], phone_number=form.cleaned_data['phone_number'],
+            password=form.cleaned_data['password'])
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+        return redirect('hearteli-work-index')
+    return render(request, 'work/register.html', {'form': form})
 
 
 def admin_workspace(user, pk):
@@ -39,6 +86,28 @@ def index(request):
         memberships__role__in=[WorkspaceMembership.ROLE_OWNER,
                                 WorkspaceMembership.ROLE_MANAGER])).distinct()
     return render(request, 'work/index.html', {'workspaces': workspaces})
+
+
+@login_required(login_url='/work/login/')
+@require_POST
+def create_workspace(request):
+    name = request.POST.get('name', '').strip()
+    if not 2 <= len(name) <= 120:
+        return HttpResponseForbidden('Provide a workspace name of 2–120 characters.')
+    base = slugify(name)[:100] or 'workspace'
+    slug, suffix = base, 2
+    while Workspace.objects.filter(slug=slug).exists():
+        slug = f'{base}-{suffix}'
+        suffix += 1
+    with transaction.atomic():
+        workspace = Workspace.objects.create(owner=request.user, name=name, slug=slug,
+            description=request.POST.get('description', '').strip()[:500],
+            workspace_type=Workspace.WORKSPACE_TYPE_OFFICE,
+            subscription_plan=Workspace.SUBSCRIPTION_PLAN_OFFICE_20)
+        WorkspaceMembership.objects.create(workspace=workspace, user=request.user,
+            role=WorkspaceMembership.ROLE_OWNER, status=WorkspaceMembership.STATUS_APPROVED,
+            designation='Admin', joined_at=timezone.now())
+    return redirect('hearteli-work-dashboard', pk=workspace.pk)
 
 
 @login_required(login_url='/work/login/')

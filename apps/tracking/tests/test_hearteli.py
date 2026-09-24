@@ -75,6 +75,23 @@ class HearteliPrivacyBoundaryTests(APITestCase):
         self.assertEqual(self.client.get('/api/tracking/hearteli/outcomes/').data, [])
         self.assertNotIn('Private journal', str(self.client.get('/api/tracking/hearteli/nudges/').data))
 
+    def test_support_conversation_is_scoped_and_revocable(self):
+        response = self.client.post('/api/tracking/hearteli/nudges/', {
+            'recipient': self.recipient.id, 'check_in': self.checkin.id,
+            'message': 'Could you check in?', 'idempotency_key': str(uuid.uuid4())}, format='json')
+        self.assertEqual(response.status_code, 201)
+        path = f"/api/tracking/hearteli/nudges/{response.data['id']}/messages/"
+        self.assertEqual(self.client.post(path, {'body': 'Thanks for being here.'}, format='json').status_code, 201)
+        self.client.force_authenticate(user=self.recipient)
+        self.assertEqual(self.client.get(path).status_code, 200)
+        self.assertEqual(self.client.post(path, {'body': 'How are you?'}, format='json').status_code, 201)
+        self.client.force_authenticate(user=self.therapist)
+        self.assertEqual(self.client.get(path).status_code, 404)
+        self.client.force_authenticate(user=self.member)
+        self.client.delete(f'/api/tracking/hearteli/circle/{self.connection.id}/')
+        self.client.force_authenticate(user=self.recipient)
+        self.assertEqual(self.client.get(path).status_code, 404)
+
     def test_therapy_grant_only_selected_context_and_revoke(self):
         other = MoodCheckIn.objects.create(user=self.member, feeling_category='good', notes='Never selected')
         from django.utils import timezone
