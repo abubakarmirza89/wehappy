@@ -1,0 +1,21 @@
+{
+  "brand": "Hearteli",
+  "version": "1.0",
+  "tagline": "Know when to be there.",
+  "colours": {
+    "Hearteli Coral": "#F2645A",
+    "Hearteli Ink": "#1E2233",
+    "Hearteli Cream": "#FFF8F4",
+    "Hearteli Blush": "#F8E7E5",
+    "Hearteli Sage": "#C8DCCF",
+    "White": "#FFFFFF"
+  },
+  "typography": {
+    "brand_direction": "Manrope",
+    "headings": "Manrope SemiBold",
+    "subheadings": "Manrope Medium",
+    "body": "Manrope Regular"
+  },
+  "signature_mechanism": "Empathy Nudge™",
+  "north_star": "Does this help one human be there for another?"
+}
