@@ -96,37 +96,7 @@ class SuggestionByMoodView(views.APIView):
         if not suggestion:
             return Response([], status=status.HTTP_204_NO_CONTENT)
 
-        user = request.user
-        Brain_Health_Score.objects.create(user=user, rating=mood.score)
-
-        message = Message.objects.filter(mood=mood).order_by("?").first()
-        if message:
-            suggestion_text = suggestion.suggestion_text
-            message_text = message.message_text
-            is_urgent = message.is_urgent
-            relatives = user.relatives.all()
-            for relative in relatives:
-                message_body = (
-                    f"Hey {relative.name}, {user.name} has been feeling {mood.name}.\n\n"
-                    f"Here's a suggestion: {suggestion_text}\n\n{message_text}\n\n"
-                    f"Is urgent: {is_urgent}\n\nThanks,"
-                )
-                msg = f"{message_body} to {[relative.email]} from 'brainhealth@gmail.com'"
-                Send_To_Relative.objects.create(message_text=msg)
-
-        brain_health_score = user.brain_health_score()
-        if brain_health_score < 50:
-            therapists = Therapist.objects.filter(is_available=True)
-            therapists_details = "\n\n".join(
-                f"{therapist.user.name}: {therapist.user.email}" for therapist in therapists
-            )
-            message_body = (
-                f"Hey {user.name}, we see your mood is less than 50%, so we suggest "
-                f"that you meet with one of the following therapists for brain health therapy:\n\n"
-                f"{therapists_details}\n\nThanks"
-            )
-            Suggestion_Therapist.objects.create(message_text=message_body)
-
+        # Suggestions are private. Never queue a disclosure as a side effect of GET.
         serializer = self.serializer_class(suggestion)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
