@@ -106,3 +106,16 @@ class TherapistAdmin(admin.ModelAdmin):
 @admin.register(UserHistory)
 class UserHistoryAdmin(admin.ModelAdmin):
     pass
+
+from .models import EmailDelivery, Notification
+
+@admin.register(EmailDelivery)
+class EmailDeliveryAdmin(admin.ModelAdmin):
+    list_display = ['id', 'recipient', 'kind', 'channel', 'status', 'attempts', 'created_at', 'sent_at']
+    list_filter = ['kind', 'channel', 'status']
+    readonly_fields = ['recipient', 'event_key', 'kind', 'subject', 'target_id', 'status', 'attempts', 'error_code', 'next_attempt_at', 'created_at', 'sent_at']
+    fields = readonly_fields
+    def has_add_permission(self, request):
+        return False
+
+admin.site.register(Notification)

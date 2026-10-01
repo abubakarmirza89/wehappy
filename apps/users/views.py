@@ -7,6 +7,7 @@ from django.core.mail import send_mail
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.generics import CreateAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.mixins import DestroyModelMixin, ListModelMixin, RetrieveModelMixin, UpdateModelMixin
@@ -70,6 +71,7 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        DeviceToken.objects.filter(user=request.user).update(is_active=False)
         Token.objects.filter(user=request.user).delete()
         logout(request)
         return Response({'message': 'Logout successful.'})
@@ -105,31 +107,17 @@ class ForgotPasswordView(APIView):
 
     def post(self, request):
         email = request.data.get('email')
-        if not email:
+        if not isinstance(email, str) or not email:
             return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        from django.core.validators import validate_email
         try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response({'message': 'If an account exists with this email, a reset link has been sent.'}, status=status.HTTP_200_OK)
-
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
-        reset_link = f"{request.build_absolute_uri('/reset-password/')}?uid={uid}&token={token}"
-
-        send_mail(
-            subject='Reset your Hearteli password',
-            message=(
-                f"Hi {user.name},\n\n"
-                f"Use the following link to reset your password:\n{reset_link}\n\n"
-                "If you did not request this, you can ignore this email."
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL or 'noreply@hearteli.local',
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
-
-        return Response({'message': 'If an account exists with this email, a reset link has been sent.'}, status=status.HTTP_200_OK)
+            validate_email(email)
+        except DjangoValidationError:
+            return Response({'error': 'Enter a valid email address.'}, status=400)
+        from .communications import request_password_reset
+        request_password_reset(email)
+        return Response({'message': 'If an active account exists with this email, a reset link will be sent.'}, status=200)
 
 
 class ResetPasswordView(APIView):
@@ -142,13 +130,13 @@ class ResetPasswordView(APIView):
         token = request.data.get('token')
         new_password = request.data.get('new_password')
 
-        if not uid or not token or not new_password:
+        if not all(isinstance(value, str) and value for value in (uid, token, new_password)):
             return Response({'error': 'uid, token, and new_password are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             user_id = urlsafe_base64_decode(uid).decode()
             user = User.objects.get(pk=user_id)
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        except (AttributeError, TypeError, ValueError, OverflowError, User.DoesNotExist):
             return Response({'error': 'Invalid reset link.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if not default_token_generator.check_token(user, token):
@@ -160,7 +148,10 @@ class ResetPasswordView(APIView):
             return Response({'new_password': error.messages}, status=status.HTTP_400_BAD_REQUEST)
         user.set_password(new_password)
         user.save(update_fields=['password'])
+        DeviceToken.objects.filter(user=user).update(is_active=False)
         Token.objects.filter(user=user).delete()
+        from .communications import password_changed
+        password_changed(user)
         return Response({'message': 'Password reset successful.'}, status=status.HTTP_200_OK)
 
 
@@ -237,40 +228,51 @@ class AppointmentViewSet(RetrieveModelMixin, ListModelMixin, DestroyModelMixin, 
             return TherapistAppointmentSerializer
 
     def perform_update(self, serializer):
+        from django.db import transaction
+        from rest_framework.exceptions import ValidationError
         instance = serializer.instance
-        if self.request.user.is_therapist:
-            status = serializer.validated_data.get("status")
-            if status in ["completed", "cancelled"]:
-                if status == "cancelled":
-                    # Calculate the refund amount (80%)
-                    total_amount = instance.hourly_rate * instance.duration
-                    refund_amount = total_amount * Decimal("0.8")
-                    # Charge 20% as cancellation fee
-                    cancellation_fee = total_amount * Decimal("0.2")
-                    # Perform refund and charge operations with Stripe
-                    stripe.Refund.create(
-                        payment_intent=instance.payment_intent_id,
-                        amount=int(refund_amount * 100),  # Convert to cents
-                    )
-                    stripe.Charge.create(
-                        amount=int(cancellation_fee * 100),  # Convert to cents
-                        currency="usd",
-                        customer=instance.customer_id,
-                        description="Cancellation fee",
-                    )
+        if instance.status not in ('BOOKED', 'IN_PROGRESS'):
+            raise ValidationError('This appointment cannot be changed.')
+        next_status = serializer.validated_data.get('status', instance.status)
+        if self.request.user.is_therapist and next_status not in ('BOOKED', 'IN_PROGRESS', 'COMPLETED', 'CANCELED'):
+            raise ValidationError({'status': 'Choose a valid appointment status.'})
+        if instance.status == 'IN_PROGRESS' and next_status != 'COMPLETED':
+            raise ValidationError('An in-progress appointment can only be completed.')
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=instance.therapist_id)
+            date = serializer.validated_data.get('date', instance.date)
+            time = serializer.validated_data.get('time', instance.time)
+            if date != instance.date or time != instance.time:
+                validate_appointment_slot(instance.therapist, date, time, exclude=instance.pk)
+            serializer.save()
 
-                if status == "completed":
-                    # Calculate the charge amount (including 10% additional fee)
-                    total_amount = instance.hourly_rate * instance.duration
-                    charge_amount = total_amount * Decimal("1.1")
-                    # Perform charge operation with Stripe
-                    stripe.Charge.create(
-                        amount=int(charge_amount * 100),  # Convert to cents
-                        currency="usd",
-                        customer=instance.customer_id,
-                        description="Appointment charge",
-                    )
-        serializer.save()
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        appointment = self.get_object()
+        if appointment.status == 'CANCELED':
+            return Response(self.get_serializer(appointment).data)
+        if appointment.status != 'BOOKED':
+            return Response({'detail': 'Only booked appointments can be cancelled.'}, status=400)
+        # Refunds require a verified provider payment policy; never fabricate charges.
+        appointment.status = 'CANCELED'
+        appointment.save(update_fields=['status'])
+        return Response(self.get_serializer(appointment).data)
+
+    def destroy(self, request, *args, **kwargs):
+        return Response({'detail': 'Cancel the appointment to preserve its history.'}, status=405)
+
+
+def validate_appointment_slot(therapist, date, time, exclude=None):
+    from datetime import datetime, timezone as dt_timezone
+    from rest_framework.exceptions import ValidationError
+    start = datetime.combine(date, time, tzinfo=dt_timezone.utc)
+    if start <= timezone.now():
+        raise ValidationError({'date': 'Choose a future appointment time (UTC).'})
+    occupied = Appointment.objects.filter(therapist=therapist, date=date, time=time).exclude(status='CANCELED')
+    if exclude:
+        occupied = occupied.exclude(pk=exclude)
+    if occupied.exists():
+        raise ValidationError({'time': 'This time is already booked. Choose another time.'})
 
 
 class TherapistDashboardView(APIView):
@@ -341,7 +343,11 @@ class CreateAppointmentViewSet(CreateAPIView):
         fee = therapist.therapist_profile.hourly_rate or Decimal('0')
         commission = (fee * settings.THERAPIST_COMMISSION_PERCENT / Decimal('100')).quantize(Decimal('0.01'))
         earnings = fee - commission
-        serializer.save(user=user, therapist=therapist, fee=fee, commission=commission, therapist_earnings=earnings)
+        from django.db import transaction
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=therapist.pk)
+            validate_appointment_slot(therapist, serializer.validated_data['date'], serializer.validated_data['time'])
+            serializer.save(user=user, therapist=therapist, fee=fee, commission=commission, therapist_earnings=earnings)
 
 
 class FeedbackCreateView(CreateAPIView):
@@ -366,6 +372,13 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         return Notification.objects.filter(recipient=user)
 
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.read = True
+        notification.save(update_fields=['read'])
+        return Response(self.get_serializer(notification).data)
+
 
 class UserHistoryListAPIView(ListAPIView):
     serializer_class = UserHistorySerializer
@@ -388,18 +401,43 @@ def reset_password_page(request):
     try:
         user = User.objects.get(pk=urlsafe_base64_decode(uid).decode())
         valid = default_token_generator.check_token(user, token)
-    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+    except (AttributeError, TypeError, ValueError, OverflowError, User.DoesNotExist):
         user = None
         valid = False
     if request.method == 'POST' and valid:
         password = request.POST.get('password', '')
         try:
+            if password != request.POST.get('confirm_password'):
+                raise DjangoValidationError('Passwords do not match.')
             validate_password(password, user=user)
             user.set_password(password)
             user.save(update_fields=['password'])
+            DeviceToken.objects.filter(user=user).update(is_active=False)
             Token.objects.filter(user=user).delete()
+            from .communications import password_changed
+            password_changed(user)
             completed = True
         except DjangoValidationError as exc:
             error = ' '.join(exc.messages)
     return render(request, 'reset_password.html', {
         'uid': uid, 'token': token, 'valid': valid, 'completed': completed, 'error': error})
+
+
+@csrf_protect
+@require_http_methods(['GET', 'POST'])
+def forgot_password_page(request):
+    from django import forms
+    from django.core.cache import cache
+    from .communications import request_password_reset
+    class ResetForm(forms.Form):
+        email = forms.EmailField()
+    form = ResetForm(request.POST or None)
+    submitted = False
+    if request.method == 'POST' and form.is_valid():
+        import hashlib
+        address = form.cleaned_data['email'].lower()
+        key = 'hearteli-reset:' + hashlib.sha256(address.encode()).hexdigest()
+        if cache.add(key, True, 60):
+            request_password_reset(address)
+        submitted = True
+    return render(request, 'work/forgot_password.html', {'form': form, 'submitted': submitted})

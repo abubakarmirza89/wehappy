@@ -125,6 +125,21 @@ class UserSignupSerializer(serializers.ModelSerializer):
                   "phone_number"]
         extra_kwargs = {"password": {"write_only": True}}
 
+    def validate_email(self, value):
+        value = value.strip().lower()
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('An account with this email already exists.')
+        return value
+
+    def validate_password(self, value):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
+        try:
+            validate_password(value)
+        except ValidationError as exc:
+            raise serializers.ValidationError(exc.messages)
+        return value
+
     def create(self, validated_data):
         email = validated_data.get("email")
         if not User.objects.filter(email=email).exists():

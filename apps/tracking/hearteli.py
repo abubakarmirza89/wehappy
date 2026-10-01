@@ -26,12 +26,13 @@ class ConnectionSerializer(serializers.ModelSerializer):
         model = CircleConnection
         fields = ['id', 'owner', 'owner_name', 'recipient', 'recipient_name',
                   'recipient_email', 'recipient_email_input', 'relationship',
-                  'accepted_at', 'may_receive_nudges', 'may_receive_preference']
+                  'accepted_at', 'may_receive_nudges', 'may_receive_preference', 'ask_on_pattern']
         read_only_fields = ['owner', 'recipient', 'accepted_at', 'may_receive_nudges']
 
     def create(self, validated_data):
         email = validated_data.pop('recipient_email_input', None)
         validated_data.pop('may_receive_preference', None)
+        validated_data.pop('ask_on_pattern', None)
         if not email:
             raise ValidationError({'recipient_email_input': 'Email is required.'})
         recipient = User.objects.filter(email__iexact=email, is_active=True).first()
@@ -74,11 +75,15 @@ class ConnectionViewSet(viewsets.ModelViewSet):
                 connection.may_receive_nudges = request.data['may_receive_nudges'] and connection.accepted_at is not None
             event = 'accepted' if request.data.get('accept') is True else 'recipient_permission_changed'
         else:
-            allowed = {'relationship', 'may_receive_preference'}
+            allowed = {'relationship', 'may_receive_preference', 'ask_on_pattern'}
             if set(request.data) - allowed:
                 raise ValidationError('Unsupported fields for owner.')
             if 'may_receive_preference' in request.data and type(request.data['may_receive_preference']) is not bool:
                 raise ValidationError({'may_receive_preference': 'Must be boolean.'})
+            if 'ask_on_pattern' in request.data:
+                if type(request.data['ask_on_pattern']) is not bool:
+                    raise ValidationError({'ask_on_pattern': 'Must be boolean.'})
+                connection.ask_on_pattern = request.data['ask_on_pattern'] and connection.accepted_at is not None
             if 'relationship' in request.data:
                 value = request.data['relationship']
                 if not isinstance(value, str) or not 1 <= len(value.strip()) <= 40:
@@ -86,6 +91,7 @@ class ConnectionViewSet(viewsets.ModelViewSet):
                 connection.relationship = value.strip()
                 # A changed role must not inherit the former permission silently.
                 connection.may_receive_preference = False
+                connection.ask_on_pattern = False
             if 'may_receive_preference' in request.data:
                 connection.may_receive_preference = request.data['may_receive_preference'] and connection.accepted_at is not None
             event = 'owner_permission_changed'
@@ -93,6 +99,17 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         ConsentEvent.objects.create(actor=request.user, connection=connection, event=event,
                                     categories=['nudge'] if connection.may_receive_nudges else [])
         return Response(self.get_serializer(connection).data)
+
+    @action(detail=False, methods=['get'])
+    def pattern_prompt(self, request):
+        recent = MoodCheckIn.objects.filter(user=request.user,
+            timestamp__gte=timezone.now()-timezone.timedelta(hours=48),
+            feeling_category__in=['not_great', 'struggling']).count()
+        eligible = CircleConnection.objects.filter(owner=request.user,
+            accepted_at__isnull=False, may_receive_nudges=True, ask_on_pattern=True)
+        return Response({'suggested': recent >= 2 and eligible.exists(),
+            'message': 'A couple of tough check-ins. Would you like to choose someone for support? Nothing will be sent without your review.',
+            'connection_ids': list(eligible.values_list('id', flat=True)) if recent >= 2 else []})
 
     def perform_destroy(self, instance):
         ConsentEvent.objects.create(actor=self.request.user, connection=instance,
@@ -167,6 +184,11 @@ class NudgeViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         key = request.data.get('idempotency_key')
         if key:
+            import uuid
+            try:
+                key = uuid.UUID(str(key))
+            except (ValueError, TypeError, AttributeError):
+                raise ValidationError({'idempotency_key': 'Use a valid UUID.'})
             previous = EmpathyNudge.objects.filter(sender=request.user, idempotency_key=key).first()
             if previous:
                 return Response(self.get_serializer(previous).data, status=status.HTTP_200_OK)
@@ -181,7 +203,10 @@ class NudgeViewSet(viewsets.ModelViewSet):
                     raise ValidationError({'recipient': 'Permission changed. Review the recipient again.'})
                 if serializer.validated_data.get('support_preference') and not connection.may_receive_preference:
                     raise ValidationError({'support_preference': 'Permission changed. Review the preview again.'})
+                if EmpathyNudge.objects.filter(sender=request.user, recipient=connection.recipient, check_in=serializer.validated_data['check_in'], status='sent').exists():
+                    raise ValidationError({'recipient': 'There is already a pending nudge for this check-in. Open that nudge instead.'})
                 nudge = serializer.save(sender=request.user)
+                nudge.refresh_from_db()
                 ConsentEvent.objects.create(actor=request.user, connection=connection,
                                             event='nudge_confirmed',
                                             categories=['message'] + (['support_preference'] if nudge.support_preference else []))
@@ -256,7 +281,22 @@ class PreferencesSerializer(serializers.ModelSerializer):
     class Meta:
         model = HearteliPreferences
         fields = ['use_contexts', 'reminder_enabled', 'nudge_notifications', 'quiet_start',
-                  'quiet_end', 'rich_lock_preview']
+                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'reminder_time']
+
+    def validate_timezone_name(self, value):
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValidationError('Choose a valid IANA timezone, for example Asia/Karachi.')
+        return value
+
+    def validate(self, attrs):
+        start = attrs.get('quiet_start', getattr(self.instance, 'quiet_start', None))
+        end = attrs.get('quiet_end', getattr(self.instance, 'quiet_end', None))
+        if (start is None) != (end is None) or (start is not None and start == end):
+            raise ValidationError('Set both quiet times to different values, or clear both.')
+        return attrs
 
 
 class PreferencesViewSet(viewsets.ViewSet):

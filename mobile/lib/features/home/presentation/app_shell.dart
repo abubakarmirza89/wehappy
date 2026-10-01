@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/notifications/firebase_service.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../hearteli/presentation/checkin_screen.dart';
@@ -30,6 +31,32 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int index = 0, refresh = 0;
   bool workContext = false;
+  @override
+  void initState() {
+    super.initState();
+    FirebaseService(widget.apiClient).initialize(
+      requestPermission: false,
+      onNudge: (id) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted)
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    NudgeDetail(apiClient: widget.apiClient, id: id),
+              ),
+            );
+        });
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    FirebaseService.disconnect();
+    super.dispose();
+  }
+
   void complete() {
     setState(() {
       index = 0;
@@ -232,21 +259,54 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 22),
-          const Text('Quick actions', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19)),
+          const Text(
+            'Quick actions',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19),
+          ),
           const SizedBox(height: 10),
-          Row(children: [
-            _QuickAction(icon: Icons.chat_bubble_outline, label: 'Message',
-              onTap: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => SupportInboxScreen(apiClient: widget.apiClient)))),
-            _QuickAction(icon: Icons.send_outlined, label: 'Nudge', onTap: widget.onCheckIn),
-            _QuickAction(icon: Icons.calendar_today_outlined, label: 'Book',
-              onTap: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => TherapyScreen(apiClient: widget.apiClient)))),
-            _QuickAction(icon: Icons.bar_chart_outlined, label: 'Insights',
-              onTap: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => Scaffold(appBar: AppBar(title: const Text('Insights')),
-                  body: InsightsScreen(apiClient: widget.apiClient))))),
-          ]),
+          Row(
+            children: [
+              _QuickAction(
+                icon: Icons.chat_bubble_outline,
+                label: 'Message',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        SupportInboxScreen(apiClient: widget.apiClient),
+                  ),
+                ),
+              ),
+              _QuickAction(
+                icon: Icons.send_outlined,
+                label: 'Nudge',
+                onTap: widget.onCheckIn,
+              ),
+              _QuickAction(
+                icon: Icons.calendar_today_outlined,
+                label: 'Book',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TherapyScreen(apiClient: widget.apiClient),
+                  ),
+                ),
+              ),
+              _QuickAction(
+                icon: Icons.bar_chart_outlined,
+                label: 'Insights',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => Scaffold(
+                      appBar: AppBar(title: const Text('Insights')),
+                      body: InsightsScreen(apiClient: widget.apiClient),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 22),
           const Text(
             'A kinder way to be there',
@@ -323,19 +383,42 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _QuickAction extends StatelessWidget {
-  const _QuickAction({required this.icon, required this.label, required this.onTap});
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  @override Widget build(BuildContext context) => Expanded(child: InkWell(
-    onTap: onTap, borderRadius: BorderRadius.circular(14),
-    child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Column(children: [
-      Container(width: 48, height: 48, decoration: BoxDecoration(color: AppColors.blush,
-        borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: AppColors.coral, size: 22)),
-      const SizedBox(height: 6),
-      Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-    ])),
-  ));
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Column(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.blush,
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(icon, color: AppColors.coral, size: 22),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class MoreScreen extends StatelessWidget {

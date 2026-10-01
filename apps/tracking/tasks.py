@@ -137,52 +137,8 @@ def calculate_daily_brain_health_scores():
 
 @shared_task
 def send_notifications_to_relatives(mood_check_in_id):
-    """
-    Send mood notifications to user's relatives
-    Called when a user completes a mood check-in
-    Intelligently routes: in-app if relative is app user, WhatsApp otherwise
-    """
-    try:
-        mood_check_in = MoodCheckIn.objects.get(id=mood_check_in_id)
-        user = mood_check_in.user
-        relatives = Relative.objects.filter(user=user)
-        
-        sent_count = 0
-        for relative in relatives:
-            try:
-                # Determine notification channel
-                if relative.is_app_user:
-                    # Send in-app notification
-                    logger.info(f"Sending in-app notification to relative: {relative.email}")
-                    send_via = 'in_app'
-                else:
-                    # Send WhatsApp notification (requires Twilio setup)
-                    logger.info(f"Sending WhatsApp to relative: {relative.phone_number}")
-                    send_via = 'whatsapp'
-                
-                # Create notification record
-                notification = MoodNotification.objects.create(
-                    user=user,
-                    relative=relative,
-                    mood_check_in=mood_check_in,
-                    message_text=f"Your loved one just checked in with mood update",
-                    notification_type='check_in',
-                    sent_via=send_via
-                )
-                
-                sent_count += 1
-            except Exception as e:
-                logger.error(f"Error notifying relative {relative.name}: {str(e)}")
-        
-        logger.info(f"Notifications sent for mood check-in {mood_check_in_id} to {sent_count} relatives")
-        return f"Sent to {sent_count} relatives"
-        
-    except MoodCheckIn.DoesNotExist:
-        logger.error(f"MoodCheckIn {mood_check_in_id} not found")
-        return "MoodCheckIn not found"
-    except Exception as e:
-        logger.error(f"Error in send_notifications_to_relatives: {str(e)}")
-        return f"Error: {str(e)}"
+    """Legacy broadcast removed: sharing requires a reviewed Hearteli nudge."""
+    return 'Disabled: use recipient-specific consent and a confirmed nudge.'
 
 
 @shared_task

@@ -106,17 +106,6 @@ def create_notification(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender=Appointment)
-def update_notification_status(sender, instance, **kwargs):
-    if instance.status == "CANCELED":
-        Notification.objects.create(
-            recipient=instance.user,
-            verb=f"Your appointment with {instance.therapist.name} has been canceled",
-            created_at=timezone.now(),
-            read=True,
-        )
-
-
-@receiver(post_save, sender=Appointment)
 def create_user_history(sender, instance, created, **kwargs):
     if created and instance.status == "BOOKED":
         UserHistory.objects.create(user=instance.user, therapist=instance.therapist, appointment=instance)
@@ -219,3 +208,25 @@ class Suggestion_Therapist(models.Model):
 
     def __str__(self):
         return self.message_text
+
+class EmailDelivery(models.Model):
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='email_deliveries')
+    event_key = models.CharField(max_length=180, unique=True)
+    kind = models.CharField(max_length=40)
+    channel = models.CharField(max_length=10, default='email', choices=[('email', 'Email'), ('push', 'Push')])
+    subject = models.CharField(max_length=200)
+    message = models.TextField()
+    path = models.TextField(blank=True)
+    target_id = models.PositiveBigIntegerField(null=True, blank=True)
+    sensitive = models.BooleanField(default=False)
+    status = models.CharField(max_length=20, default='pending', choices=[
+        ('pending', 'Pending'), ('retry', 'Retry'), ('sent', 'SMTP accepted'),
+        ('failed', 'Failed'), ('suppressed', 'Suppressed')])
+    attempts = models.PositiveSmallIntegerField(default=0)
+    error_code = models.CharField(max_length=80, blank=True)
+    next_attempt_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['status', 'next_attempt_at'], name='hearteli_email_due')]

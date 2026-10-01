@@ -226,6 +226,13 @@ class _BookTherapistState extends State<BookTherapist> {
 
   Future<void> submit() async {
     if (date == null || time == null) return;
+    final utcStart = DateTime(
+      date!.year,
+      date!.month,
+      date!.day,
+      time!.hour,
+      time!.minute,
+    ).toUtc();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
@@ -251,9 +258,9 @@ class _BookTherapistState extends State<BookTherapist> {
       await widget.apiClient.post(
         '/api/users/create-appointment/${widget.therapist['id']}/',
         body: {
-          'date': date!.toIso8601String().substring(0, 10),
+          'date': utcStart.toIso8601String().substring(0, 10),
           'time':
-              '${time!.hour.toString().padLeft(2, '0')}:${time!.minute.toString().padLeft(2, '0')}',
+              '${utcStart.hour.toString().padLeft(2, '0')}:${utcStart.minute.toString().padLeft(2, '0')}',
           'location': format,
           'reason': reason.text.trim().isEmpty
               ? 'Support session'

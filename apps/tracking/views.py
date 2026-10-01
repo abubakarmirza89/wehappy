@@ -113,7 +113,10 @@ class MoodCheckInViewSet(viewsets.ModelViewSet):
         return MoodCheckIn.objects.filter(user=self.request.user)
     
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        from zoneinfo import ZoneInfo
+        from .models import HearteliPreferences
+        pref, _ = HearteliPreferences.objects.get_or_create(user=self.request.user)
+        serializer.save(user=self.request.user, date=timezone.now().astimezone(ZoneInfo(pref.timezone_name)).date())
     
     @action(detail=False, methods=['post'])
     def today_check_in(self, request):

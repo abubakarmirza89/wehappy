@@ -342,6 +342,7 @@ class CircleConnection(models.Model):
     accepted_at = models.DateTimeField(null=True, blank=True)
     may_receive_nudges = models.BooleanField(default=False)
     may_receive_preference = models.BooleanField(default=False)
+    ask_on_pattern = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -389,6 +390,9 @@ class HearteliPreferences(models.Model):
     quiet_start = models.TimeField(null=True, blank=True)
     quiet_end = models.TimeField(null=True, blank=True)
     rich_lock_preview = models.BooleanField(default=False)
+    email_notifications = models.BooleanField(default=True)
+    timezone_name = models.CharField(max_length=64, default="UTC")
+    reminder_time = models.TimeField(default="09:00")
 
 
 class NudgeMessage(models.Model):

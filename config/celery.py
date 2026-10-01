@@ -20,17 +20,9 @@ app.autodiscover_tasks()
 
 # Define periodic tasks
 app.conf.beat_schedule = {
-    'send-daily-mood-reminder': {
-        'task': 'apps.tracking.tasks.send_daily_mood_reminder',
-        'schedule': crontab(hour=9, minute=0),  # 9 AM daily
-    },
-    'send-daily-gratitude-prompt': {
-        'task': 'apps.tracking.tasks.send_daily_gratitude_prompt',
-        'schedule': crontab(hour=8, minute=0),  # 8 AM daily
-    },
-    'calculate-daily-brain-health': {
-        'task': 'apps.tracking.tasks.calculate_daily_brain_health_scores',
-        'schedule': crontab(hour=22, minute=0),  # 10 PM daily
+    'hearteli-notification-delivery': {
+        'task': 'apps.users.tasks.process_notifications',
+        'schedule': 60.0,
     },
 }
 

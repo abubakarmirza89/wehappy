@@ -204,7 +204,7 @@ EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
 EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@mindmenta.app")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@hearteli.local")
 
 
 # ADMIN
@@ -283,3 +283,8 @@ OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 TWILIO_ACCOUNT_SID = env("TWILIO_ACCOUNT_SID", default="")
 TWILIO_AUTH_TOKEN = env("TWILIO_AUTH_TOKEN", default="")
 TWILIO_PHONE_NUMBER = env("TWILIO_PHONE_NUMBER", default="")
+
+# Set this to the verified HTTPS origin; reset links never trust request Host.
+HEARTELI_PUBLIC_URL = env("HEARTELI_PUBLIC_URL", default="http://localhost:8000")
+HEARTELI_EMAIL_MESSAGE_DOMAIN = env("HEARTELI_EMAIL_MESSAGE_DOMAIN", default="hearteli.local")
+PASSWORD_RESET_TIMEOUT = 3600

@@ -11,7 +11,12 @@ import 'safety_screen.dart';
 import 'feel_better_screen.dart';
 
 class CheckInScreen extends StatefulWidget {
-  const CheckInScreen({super.key, required this.apiClient, required this.userId, this.onComplete});
+  const CheckInScreen({
+    super.key,
+    required this.apiClient,
+    required this.userId,
+    this.onComplete,
+  });
   final ApiClient apiClient;
   final String userId;
   final VoidCallback? onComplete;
@@ -37,7 +42,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   final tags = <String>{}, preferences = <String>{};
   final note = TextEditingController(), message = TextEditingController();
   List<dynamic> connections = [];
-  bool busy = false, hasDraft = false;
+  bool busy = false, hasDraft = false, patternSuggested = false;
   String? error;
   late final String retryKey = _newKey();
   static String _newKey() {
@@ -84,10 +89,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   }
 
   Future<void> _draft() async {
-    await storage.write(
-      key: draftKey,
-      value: jsonEncode(_payload()),
-    );
+    await storage.write(key: draftKey, value: jsonEncode(_payload()));
     if (mounted) {
       setState(() => hasDraft = true);
       showCalmMessage(
@@ -131,6 +133,11 @@ class _CheckInScreenState extends State<CheckInScreen> {
   Future<void> _loadConnections() async {
     try {
       final data = await widget.apiClient.get('/api/tracking/hearteli/circle/');
+      final prompt = await widget.apiClient.get(
+        '/api/tracking/hearteli/circle/pattern_prompt/',
+      );
+      if (mounted)
+        setState(() => patternSuggested = prompt['suggested'] == true);
       if (mounted)
         setState(
           () => connections = items(data)
@@ -196,12 +203,18 @@ class _CheckInScreenState extends State<CheckInScreen> {
     }
   }
 
-  void _showProgress() => Navigator.push(context, MaterialPageRoute(
-    builder: (_) => FeelBetterScreen(apiClient: widget.apiClient, onDone: () {
-      Navigator.pop(context);
-      widget.onComplete?.call();
-    }),
-  ));
+  void _showProgress() => Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => FeelBetterScreen(
+        apiClient: widget.apiClient,
+        onDone: () {
+          Navigator.pop(context);
+          widget.onComplete?.call();
+        },
+      ),
+    ),
+  );
 
   String _preferenceText() => preferences
       .map(
@@ -272,6 +285,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
                         : 'Only the exact text shown here will be available to this person.',
                   ),
                   const SizedBox(height: 22),
+                  if (step == 3 && patternSuggested)
+                    const StatusPanel(
+                      message: 'A couple of tough check-ins. Would you like to choose someone for support? Nothing is sent without your review.',
+                    ),
                   if (step == 0) ...[
                     if (hasDraft)
                       StatusPanel(
