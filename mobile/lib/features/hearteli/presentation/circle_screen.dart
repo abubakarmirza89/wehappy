@@ -122,7 +122,7 @@ class _CircleScreenState extends State<CircleScreen> {
       );
       await load();
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      rethrow;
     }
   }
 
@@ -250,11 +250,20 @@ class CircleDetail extends StatefulWidget {
 class _CircleDetailState extends State<CircleDetail> {
   late bool nudge = widget.person['may_receive_nudges'] == true;
   late bool preference = widget.person['may_receive_preference'] == true;
+  late bool pattern = widget.person['ask_on_pattern'] == true;
   bool busy = false;
-  Future<void> change(Map<String, dynamic> value) async {
+  Future<bool> change(Map<String, dynamic> value) async {
     setState(() => busy = true);
-    await widget.onUpdate(value);
-    if (mounted) setState(() => busy = false);
+    try {
+      await widget.onUpdate(value);
+      if (mounted && value.containsKey('accept')) Navigator.pop(context);
+      return true;
+    } catch (e) {
+      if (mounted) showCalmMessage(context, '$e');
+      return false;
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   @override
@@ -305,7 +314,6 @@ class _CircleDetailState extends State<CircleDetail> {
                   ? null
                   : () async {
                       await change({'accept': false});
-                      if (context.mounted) Navigator.pop(context);
                     },
               child: const Text('Decline'),
             ),
@@ -333,8 +341,11 @@ class _CircleDetailState extends State<CircleDetail> {
                       onChanged: pending || busy
                           ? null
                           : (v) async {
-                              await change({'may_receive_preference': v});
-                              if (mounted) setState(() => preference = v);
+                              final saved = await change({
+                                'may_receive_preference': v,
+                              });
+                              if (mounted && saved)
+                                setState(() => preference = v);
                             },
                     )
                   else
@@ -346,13 +357,29 @@ class _CircleDetailState extends State<CircleDetail> {
                       onChanged: busy
                           ? null
                           : (v) async {
-                              await change({'may_receive_nudges': v});
-                              if (mounted) setState(() => nudge = v);
+                              final saved = await change({
+                                'may_receive_nudges': v,
+                              });
+                              if (mounted && saved) setState(() => nudge = v);
                             },
                     ),
                 ],
               ),
             ),
+            if (widget.isOwner)
+              SwitchListTile(
+                title: const Text('Ask me after repeated tough check-ins'),
+                subtitle: const Text(
+                  'Two tough check-ins within 48 hours can suggest this person. Nothing is sent automatically.',
+                ),
+                value: pattern,
+                onChanged: pending || busy
+                    ? null
+                    : (v) async {
+                        final saved = await change({'ask_on_pattern': v});
+                        if (mounted && saved) setState(() => pattern = v);
+                      },
+              ),
             const SizedBox(height: 18),
             OutlinedButton(
               onPressed: busy

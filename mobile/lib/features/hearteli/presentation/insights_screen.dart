@@ -186,7 +186,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 message: 'No history yet. A first check-in can be private.',
               )
             else
-              for (final raw in history.take(15))
+              for (final raw in history)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: HearteliCard(
@@ -195,6 +195,18 @@ class _InsightsScreenState extends State<InsightsScreen> {
                       title: label(raw as Map),
                       subtitle:
                           '${raw['date']} · ${raw['notes']?.toString().isNotEmpty == true ? 'Private note saved' : 'Private check-in'}',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CheckInDetail(
+                            apiClient: widget.apiClient,
+                            entry: Map<String, dynamic>.from(raw),
+                            nudges: nudges
+                                .where((n) => n['check_in'] == raw['id'])
+                                .toList(),
+                          ),
+                        ),
+                      ).then((_) => load()),
                     ),
                   ),
                 ),
@@ -232,4 +244,136 @@ class _InsightsScreenState extends State<InsightsScreen> {
       ),
     );
   }
+}
+
+class CheckInDetail extends StatefulWidget {
+  const CheckInDetail({
+    super.key,
+    required this.apiClient,
+    required this.entry,
+    required this.nudges,
+  });
+  final ApiClient apiClient;
+  final Map<String, dynamic> entry;
+  final List<dynamic> nudges;
+  @override
+  State<CheckInDetail> createState() => _CheckInDetailState();
+}
+
+class _CheckInDetailState extends State<CheckInDetail> {
+  late final TextEditingController note = TextEditingController(
+    text: '${widget.entry['notes'] ?? ''}',
+  );
+  bool busy = false;
+  @override
+  void dispose() {
+    note.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    setState(() => busy = true);
+    try {
+      await widget.apiClient.patch(
+        '/api/tracking/mood-check-ins/${widget.entry['id']}/',
+        body: {'notes': note.text},
+      );
+      if (mounted)
+        showCalmMessage(
+          context,
+          'Private note saved. Previous nudge messages are unchanged.',
+        );
+    } catch (e) {
+      if (mounted) showCalmMessage(context, '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> remove() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Delete this check-in?'),
+        content: const Text(
+          'This permanently removes the private entry and its linked nudges and support conversation. People who already read a message may still remember it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    setState(() => busy = true);
+    try {
+      await widget.apiClient.delete(
+        '/api/tracking/mood-check-ins/${widget.entry['id']}/',
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) showCalmMessage(context, '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Private check-in')),
+    body: ListView(
+      padding: screenPadding,
+      children: [
+        PageIntro(
+          title: '${widget.entry['feeling_category']}'.replaceAll('_', ' '),
+          subtitle:
+              '${widget.entry['date']} · Only you can view this private entry.',
+        ),
+        const SizedBox(height: 20),
+        TextField(
+          controller: note,
+          maxLength: 500,
+          minLines: 3,
+          maxLines: 8,
+          decoration: const InputDecoration(labelText: 'Private note'),
+        ),
+        FilledButton(
+          onPressed: busy ? null : save,
+          child: const Text('Save private note'),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'What you chose to share',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+        ),
+        if (widget.nudges.isEmpty)
+          const StatusPanel(message: 'No nudge was sent from this check-in.')
+        else
+          for (final n in widget.nudges)
+            HearteliCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('To ${n['recipient_name']}'),
+                  Text('${n['message']}'),
+                  if ('${n['support_preference'] ?? ''}'.isNotEmpty)
+                    Text('${n['support_preference']}'),
+                  Text('${n['status']} · ${n['delivery_status']}'),
+                ],
+              ),
+            ),
+        const SizedBox(height: 20),
+        OutlinedButton(
+          onPressed: busy ? null : remove,
+          child: const Text('Delete check-in'),
+        ),
+      ],
+    ),
+  );
 }

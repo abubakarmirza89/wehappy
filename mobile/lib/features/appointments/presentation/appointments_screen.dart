@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../shared/widgets/error_view.dart';
-import '../../../shared/widgets/loading_view.dart';
-import '../../../shared/widgets/section_title.dart';
+import '../../hearteli/presentation/components.dart';
 
 class AppointmentsScreen extends StatefulWidget {
   const AppointmentsScreen({super.key, required this.apiClient});
@@ -14,21 +11,161 @@ class AppointmentsScreen extends StatefulWidget {
 }
 
 class _AppointmentsScreenState extends State<AppointmentsScreen> {
-  late Future<List<dynamic>> _future;
+  List<dynamic> appointments = [];
+  bool loading = true, busy = false;
+  String? error;
   @override
-  void initState() { super.initState(); _future = _load(); }
-  Future<List<dynamic>> _load() async { final data = await widget.apiClient.get('/api/users/appointment/'); return data is List ? data : const []; }
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final data = await widget.apiClient.get('/api/users/appointment/');
+      if (mounted)
+        setState(() {
+          appointments = items(data);
+          loading = false;
+          error = null;
+        });
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          error = '$e';
+          loading = false;
+        });
+    }
+  }
+
+  Future<void> change(Map item, bool cancel) async {
+    Map<String, dynamic> payload = {};
+    if (!cancel) {
+      final date = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now().add(const Duration(days: 1)),
+        firstDate: DateTime.now(),
+        lastDate: DateTime.now().add(const Duration(days: 365)),
+      );
+      if (date == null || !mounted) return;
+      final time = await showTimePicker(
+        context: context,
+        initialTime: const TimeOfDay(hour: 10, minute: 0),
+      );
+      if (time == null || !mounted) return;
+      payload = {
+        'date': date.toIso8601String().substring(0, 10),
+        'time':
+            '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+      };
+    }
+    if (!mounted) return;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(cancel ? 'Cancel appointment?' : 'Review new time'),
+        content: Text(
+          cancel
+              ? 'Your booking history will remain available. Any payment refund follows your provider’s policy.'
+              : '${payload['date']} at ${payload['time']} UTC. Confirm the timezone with your provider.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, false),
+            child: const Text('Keep current'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || yes != true) return;
+    setState(() => busy = true);
+    try {
+      if (cancel) {
+        await widget.apiClient.post(
+          '/api/users/appointment/${item['id']}/cancel/',
+          body: {},
+        );
+      } else {
+        await widget.apiClient.patch(
+          '/api/users/appointment/${item['id']}/',
+          body: payload,
+        );
+      }
+      await load();
+    } catch (e) {
+      if (mounted) showCalmMessage(context, '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
 
   @override
-  Widget build(BuildContext context) => SafeArea(child: FutureBuilder<List<dynamic>>(future: _future, builder: (context, snapshot) {
-    if (snapshot.connectionState == ConnectionState.waiting) return const LoadingView(message: 'Loading your sessions...');
-    if (snapshot.hasError) return ErrorView(message: '${snapshot.error}', onRetry: () => setState(() => _future = _load()));
-    final appointments = snapshot.data!;
-    return ListView(padding: const EdgeInsets.fromLTRB(20, 18, 20, 32), children: [
-      Text('Your sessions', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, color: AppColors.ink)),
-      const SizedBox(height: 8), const Text('Keep your support appointments in one calm place.'), const SizedBox(height: 24), SectionTitle(title: '${appointments.length} appointments'), const SizedBox(height: 12),
-      if (appointments.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(20), child: Text('No appointments yet. Explore therapists to book your first session.'))),
-      ...appointments.map((item) { final appointment = item as Map<String, dynamic>; return Card(margin: const EdgeInsets.only(bottom: 12), child: ListTile(contentPadding: const EdgeInsets.all(16), leading: const CircleAvatar(backgroundColor: AppColors.blush, child: Icon(Icons.calendar_today_outlined)), title: Text('${appointment['therapist'] ?? 'Therapy session'}', style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text('${appointment['date'] ?? ''}  ${appointment['time'] ?? ''}\n${appointment['location'] ?? 'Online'}'), isThreeLine: true, trailing: Text('${appointment['status'] ?? 'BOOKED'}'))); }),
-    ]);
-  }));
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Your appointments')),
+    body: RefreshIndicator(
+      onRefresh: load,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: screenPadding,
+        children: [
+          const PageIntro(
+            title: 'Professional support',
+            subtitle: 'Appointment times below use UTC. Confirm any provider-specific timezone before attending.',
+          ),
+          const SizedBox(height: 20),
+          if (loading)
+            const Center(child: CircularProgressIndicator())
+          else if (error != null)
+            StatusPanel(message: error!, action: 'Try again', onAction: load)
+          else if (appointments.isEmpty)
+            const StatusPanel(
+              message: 'No appointments yet. Explore therapists to request your first session.',
+            )
+          else
+            for (final raw in appointments)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: HearteliCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${raw['therapist'] ?? raw['user'] ?? 'Session'}',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text('${raw['date']} · ${raw['time']} UTC'),
+                      Text('${raw['location']} · ${raw['status']}'),
+                      if (raw['status'] == 'BOOKED')
+                        Wrap(
+                          spacing: 10,
+                          children: [
+                            OutlinedButton(
+                              onPressed: busy
+                                  ? null
+                                  : () => change(raw as Map, false),
+                              child: const Text('Reschedule'),
+                            ),
+                            TextButton(
+                              onPressed: busy
+                                  ? null
+                                  : () => change(raw as Map, true),
+                              child: const Text('Cancel appointment'),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+        ],
+      ),
+    ),
+  );
 }

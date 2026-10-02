@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/notifications/firebase_service.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/data/auth_repository.dart';
@@ -12,6 +13,7 @@ import '../../auth/presentation/login_screen.dart';
 import 'circle_screen.dart';
 import 'components.dart';
 import 'safety_screen.dart';
+import 'notifications_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
@@ -43,6 +45,17 @@ class SettingsScreen extends StatelessWidget {
                       apiClient: apiClient,
                       sessionStore: sessionStore,
                     ),
+                  ),
+                ),
+              ),
+              LabelRow(
+                icon: Icons.mail_outline,
+                title: 'Your updates',
+                subtitle: 'Account and support notifications',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => NotificationsScreen(apiClient: apiClient),
                   ),
                 ),
               ),
@@ -258,7 +271,13 @@ class NotificationSettings extends StatefulWidget {
 }
 
 class _NotificationSettingsState extends State<NotificationSettings> {
-  bool reminder = false, nudge = true, rich = false, busy = false;
+  bool reminder = false,
+      nudge = true,
+      rich = false,
+      busy = false,
+      emailNotifications = true;
+  String timezoneName = "UTC";
+  TimeOfDay reminderTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay? start, end;
   String? error;
   @override
@@ -287,6 +306,11 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           reminder = data['reminder_enabled'] == true;
           nudge = data['nudge_notifications'] != false;
           rich = data['rich_lock_preview'] == true;
+          emailNotifications = data['email_notifications'] != false;
+          timezoneName = '${data['timezone_name'] ?? 'UTC'}';
+          reminderTime =
+              parse(data['reminder_time']) ??
+              const TimeOfDay(hour: 9, minute: 0);
           start = parse(data['quiet_start']);
           end = parse(data['quiet_end']);
         });
@@ -302,6 +326,9 @@ class _NotificationSettingsState extends State<NotificationSettings> {
         '/api/tracking/hearteli/preferences/update_mine/',
         body: {
           'reminder_enabled': reminder,
+          'email_notifications': emailNotifications,
+          'timezone_name': timezoneName,
+          'reminder_time': format(reminderTime),
           'nudge_notifications': nudge,
           'rich_lock_preview': rich,
           'quiet_start': format(start),
@@ -311,7 +338,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       if (mounted)
         showCalmMessage(
           context,
-          'Preferences saved. Device notification delivery requires OS permission and server setup.',
+          'Preferences saved. Email delivery follows your quiet hours. Push delivery also requires device permission and server setup.',
         );
     } catch (e) {
       if (mounted) setState(() => error = '$e');
@@ -331,6 +358,48 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           subtitle: 'You choose when to hear from Hearteli.',
         ),
         const SizedBox(height: 18),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.notifications_active_outlined),
+          label: const Text('Enable device notifications'),
+          onPressed: () async {
+            final enabled = await FirebaseService(widget.apiClient)
+                .initialize();
+            if (mounted)
+              showCalmMessage(
+                context,
+                enabled ? 'Device notifications enabled.' : 'Notifications could not be enabled. Check device permission and Firebase setup.',
+              );
+          },
+        ),
+        SwitchListTile(
+          title: const Text('Email notifications'),
+          subtitle: const Text('Account security emails remain enabled.'),
+          value: emailNotifications,
+          onChanged: (v) => setState(() => emailNotifications = v),
+        ),
+        DropdownButtonFormField<String>(
+          value: timezoneName,
+          decoration: const InputDecoration(labelText: 'Notification timezone'),
+          items: {
+            timezoneName,
+            'UTC',
+            'Asia/Karachi',
+            'Europe/London',
+            'America/New_York',
+            'Asia/Dubai',
+          }.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+          onChanged: (v) => setState(() => timezoneName = v ?? timezoneName),
+        ),
+        OutlinedButton(
+          onPressed: () async {
+            final t = await showTimePicker(
+              context: context,
+              initialTime: reminderTime,
+            );
+            if (t != null) setState(() => reminderTime = t);
+          },
+          child: Text('Reminder at ${reminderTime.format(context)}'),
+        ),
         SwitchListTile(
           title: const Text('Daily reminder'),
           value: reminder,

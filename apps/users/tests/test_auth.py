@@ -137,6 +137,10 @@ class AuthAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        from apps.users.communications import dispatch_email_batch
+        from apps.users.models import EmailDelivery
+        EmailDelivery.objects.filter(kind='welcome').update(status='suppressed')
+        dispatch_email_batch()
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("reset", mail.outbox[0].subject.lower())
         self.assertIn(self.user_data["email"], mail.outbox[0].to)

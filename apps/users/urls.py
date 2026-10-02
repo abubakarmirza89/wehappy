@@ -37,10 +37,12 @@ urlpatterns = [
          CreateAppointmentViewSet.as_view(), name="api-create-appointment"),
     path("user-history/", UserHistoryListAPIView.as_view(), name="api-user-history"),
 
+    path('appointment/<int:pk>/cancel/', AppointmentViewSet.as_view({'post': 'cancel'}), name='appointment-cancel'),
     path('appointment/',
          AppointmentViewSet.as_view({'get': 'list', }), name='appointment-list'),
     path('appointment/<int:pk>/', AppointmentViewSet.as_view(
         {'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='appointment-detail'),
+    path('notifications/<int:pk>/read/', NotificationViewSet.as_view({'post': 'mark_read'}), name='notification-mark-read'),
     path('notifications/',
          NotificationViewSet.as_view({'get': 'list'}), name='notification-list'),
     path('notifications/<int:pk>/',
