@@ -21,121 +21,110 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   int step = 0;
+  bool demoSharing = false;
+  static const headlines = [
+    'Some days, ‘I’m okay’ is a lie.',
+    'Log how you feel. You choose who can know.',
+    'They don’t just get a notification. They get a way in.',
+  ];
+  static const descriptions = [
+    'The people who love you would show up in a heartbeat. If only they knew.',
+    'Pick your person. Decide what they see and when. Turn it off anytime. Nothing is shared without you.',
+    'A message. Your favourite coffee on the way. Time blocked out tonight. Hearteli turns knowing into showing up.',
+  ];
+
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.cream,
     body: SafeArea(
       child: LayoutBuilder(
         builder: (context, bounds) => SingleChildScrollView(
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: bounds.maxHeight),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(28, 30, 28, 28),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  BrandLogo(
-                    height: step == 0 ? 92 : 56,
-                    alignment: Alignment.center,
+                  const BrandLogo(height: 64, alignment: Alignment.center),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (step > 0)
+                        TextButton.icon(
+                          onPressed: () => setState(() => step--),
+                          icon: const Icon(Icons.arrow_back, size: 18),
+                          label: const Text('Back'),
+                        )
+                      else
+                        const SizedBox(width: 80),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text('${step + 1} of 3',
+                          style: const TextStyle(color: AppColors.neutralGrey)),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: step == 0 ? 90 : 48),
-                  if (step == 0) ...[
-                    SizedBox(height: 155, child: Stack(children: [
-                      Positioned(left: 4, bottom: 6, child: Container(width: 104, height: 104,
-                        decoration: const BoxDecoration(color: AppColors.blush, shape: BoxShape.circle))),
-                      Positioned(right: 18, top: 0, child: Container(width: 70, height: 70,
-                        decoration: const BoxDecoration(color: AppColors.blush, shape: BoxShape.circle))),
-                      Positioned(right: 48, bottom: 12, child: Container(width: 36, height: 36,
-                        decoration: const BoxDecoration(color: AppColors.blush, shape: BoxShape.circle))),
-                    ])),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'A kinder way\nto stay connected.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
+                  const SizedBox(height: 12),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: Column(
+                      key: ValueKey(step),
+                      children: [
+                        _PitchVisual(
+                          step: step,
+                          sharing: demoSharing,
+                          onSharingChanged: (value) => setState(() => demoSharing = value),
+                        ),
+                        const SizedBox(height: 26),
+                        Text(headlines[step], textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 29, height: 1.18,
+                            fontWeight: FontWeight.w800, color: AppColors.ink)),
+                        const SizedBox(height: 16),
+                        Text(descriptions[step], textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 16, height: 1.5,
+                            color: AppColors.neutralGrey)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(3, (index) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: step == index ? 24 : 8, height: 8,
+                        decoration: BoxDecoration(
+                          color: step == index ? AppColors.coral : AppColors.blush,
+                          borderRadius: BorderRadius.circular(8)),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'A kinder way to check in, show you care, and support when it matters.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: AppColors.neutralGrey,
-                      ),
-                    ),
-                  ] else ...[
-                    const PageIntro(
-                      title: 'How Hearteli works',
-                      subtitle: 'Small check-ins make a big difference.',
-                    ),
-                    const SizedBox(height: 28),
-                    const _HowCard(
-                      icon: Icons.favorite_outline,
-                      index: '01',
-                      title: 'Check in privately',
-                      body: 'Take a moment to name how you feel.',
-                    ),
-                    const SizedBox(height: 10),
-                    const _HowCard(
-                      icon: Icons.visibility_outlined,
-                      index: '02',
-                      title: 'Choose who can know',
-                      body: 'You decide if and what to share.',
-                    ),
-                    const SizedBox(height: 10),
-                    const _HowCard(
-                      icon: Icons.send_outlined,
-                      index: '03',
-                      title: 'Send a gentle nudge',
-                      body: 'One trusted person gets a helpful prompt.',
-                    ),
-                    const SizedBox(height: 10),
-                    const _HowCard(
-                      icon: Icons.people_outline,
-                      index: '04',
-                      title: 'Be there',
-                      body: 'Real people make the difference.',
-                    ),
-                  ],
-                  const SizedBox(height: 44),
+                    )),
+                  ),
+                  const SizedBox(height: 24),
                   FilledButton(
                     onPressed: () {
-                      if (step == 0) {
-                        setState(() => step = 1);
+                      if (step < 2) {
+                        setState(() => step++);
                       } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => SignupScreen(
-                              sessionStore: widget.sessionStore,
-                              apiClient: widget.apiClient,
-                            ),
-                          ),
-                        );
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => SignupScreen(
+                            sessionStore: widget.sessionStore,
+                            apiClient: widget.apiClient)));
                       }
                     },
-                    child: Text(step == 0 ? 'Get Started' : 'Create account'),
+                    child: Text(step == 2 ? 'Create account' : 'Continue'),
                   ),
-                  const SizedBox(height: 8),
                   TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => LoginScreen(
-                          sessionStore: widget.sessionStore,
-                          apiClient: widget.apiClient,
-                        ),
-                      ),
-                    ),
-                    child: Text(
-                      step == 0
-                          ? 'I already have an account'
-                          : 'Sign in instead',
-                    ),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => LoginScreen(
+                        sessionStore: widget.sessionStore,
+                        apiClient: widget.apiClient))),
+                    child: const Text('I already have an account'),
                   ),
+                  const SizedBox(height: 12),
+                  const HearteliFooter(),
                 ],
               ),
             ),
@@ -146,52 +135,84 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   );
 }
 
-class _HowCard extends StatelessWidget {
-  const _HowCard({
-    required this.icon,
-    required this.index,
-    required this.title,
-    required this.body,
-  });
-  final IconData icon;
-  final String index, title, body;
+class _PitchVisual extends StatelessWidget {
+  const _PitchVisual({required this.step, required this.sharing,
+    required this.onSharingChanged});
+  final int step;
+  final bool sharing;
+  final ValueChanged<bool> onSharingChanged;
+
   @override
-  Widget build(BuildContext context) => HearteliCard(
-    child: Row(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: AppColors.blush,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Icon(icon, color: AppColors.coral),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$index  $title',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-              Text(
-                body,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.neutralGrey,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(color: AppColors.blush,
+      borderRadius: BorderRadius.circular(28)),
+    child: step == 0 ? _problem() : step == 1 ? _control() : _payoff(),
+  );
+
+  Widget _problem() => Semantics(
+    label: 'One person turns away, feeling low. Another person does not yet know.',
+    child: Column(children: [
+      const Align(alignment: Alignment.centerLeft,
+        child: _GestureNote(icon: Icons.chat_bubble_outline, text: '“I’m okay.”')),
+      const SizedBox(height: 18),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+        Transform.flip(flipX: true, child: const Icon(Icons.person,
+          size: 96, color: AppColors.neutralGrey)),
+        const Icon(Icons.more_horiz, color: AppColors.neutralGrey),
+        const Icon(Icons.person_outline, size: 96, color: AppColors.coral),
+      ]),
+      const SizedBox(height: 12),
+      const Text('So much can go unsaid.',
+        style: TextStyle(color: AppColors.ink)),
+    ]),
+  );
+
+  Widget _control() => Column(children: [
+    AnimatedOpacity(
+      opacity: sharing ? 1 : 0.3,
+      duration: const Duration(milliseconds: 300),
+      child: Image.asset('assets/brand/hearteli_symbol_transparent.png',
+        height: 105, fit: BoxFit.contain),
     ),
+    const SizedBox(height: 12),
+    SwitchListTile.adaptive(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('Let my person know',
+        style: TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(sharing ? 'Your choice. Turn it off anytime.' : 'Private by default'),
+      value: sharing,
+      activeColor: AppColors.coral,
+      onChanged: onSharingChanged,
+    ),
+    const Text('Try the demo — nothing is shared.', textAlign: TextAlign.center,
+      style: TextStyle(fontSize: 12, color: AppColors.neutralGrey)),
+  ]);
+
+  Widget _payoff() => const Column(children: [
+    _GestureNote(icon: Icons.chat_bubble_outline, text: 'On my way. Coffee?'),
+    SizedBox(height: 14),
+    Icon(Icons.coffee_outlined, size: 74, color: AppColors.coral),
+    SizedBox(height: 14),
+    _GestureNote(icon: Icons.schedule, text: 'Tonight, I’ve made time for you.'),
+  ]);
+}
+
+class _GestureNote extends StatelessWidget {
+  const _GestureNote({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    decoration: BoxDecoration(color: Colors.white,
+      borderRadius: BorderRadius.circular(16)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 20, color: AppColors.coral),
+      const SizedBox(width: 10),
+      Flexible(child: Text(text, style: const TextStyle(color: AppColors.ink))),
+    ]),
   );
 }
 

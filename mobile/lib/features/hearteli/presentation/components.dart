@@ -158,3 +158,14 @@ List<dynamic> items(dynamic data) => data is List
     : data is Map
     ? (data['results'] as List? ?? [])
     : [];
+
+/// Shared attribution for public Hearteli entry screens.
+class HearteliFooter extends StatelessWidget {
+  const HearteliFooter({super.key});
+  @override
+  Widget build(BuildContext context) => const Text(
+    'Made with love 🤍 · Sydney, Australia',
+    textAlign: TextAlign.center,
+    style: TextStyle(fontSize: 12, height: 1.5, color: AppColors.neutralGrey),
+  );
+}
