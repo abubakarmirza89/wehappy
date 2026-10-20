@@ -1,4 +1,4 @@
-package com.mindmenta.app
+package com.hearteli.app
 
 import io.flutter.embedding.android.FlutterActivity
 

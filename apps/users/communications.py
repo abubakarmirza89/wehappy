@@ -55,6 +55,22 @@ def delivery_allowed(delivery):
     user = delivery.recipient
     if not user.is_active:
         return 'suppress'
+    if delivery.kind == 'daily_prompt':
+        pref, _ = HearteliPreferences.objects.get_or_create(user=user)
+        local_date = timezone.now().astimezone(ZoneInfo(pref.timezone_name)).date()
+        if f'daily-prompt:{user.pk}:{local_date.isoformat()}:' not in delivery.event_key:
+            return 'suppress'
+        if not user.device_tokens.filter(is_active=True).exists():
+            return 'suppress'
+        if EmailDelivery.objects.filter(
+            recipient=user,
+            kind='daily_prompt',
+            channel='push',
+            status='sent',
+            sent_at__gt=timezone.now() - timedelta(hours=4),
+        ).exists():
+            return 'defer'
+        return 'send'
     if delivery.kind in ('welcome', 'password_reset', 'password_changed'):
         if delivery.kind == 'password_reset':
             from urllib.parse import urlsplit, parse_qs

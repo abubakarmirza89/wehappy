@@ -1,8 +1,9 @@
 from celery import shared_task
 from .communications import dispatch_email_batch
-from .reminders import queue_due_reminders
+from .reminders import queue_due_push_reminders, queue_due_reminders
 
 @shared_task
 def process_notifications():
     queue_due_reminders()
+    queue_due_push_reminders()
     return dispatch_email_batch()

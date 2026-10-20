@@ -56,13 +56,14 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await _auth.login(email: _email.text.trim(), password: _password.text);
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => AppShell(
             sessionStore: widget.sessionStore,
             apiClient: widget.apiClient,
           ),
         ),
+        (_) => false,
       );
     } on ApiException catch (error) {
       setState(() => _error = error.message);

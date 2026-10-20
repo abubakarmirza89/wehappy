@@ -13,6 +13,9 @@ android/local.properties
 android/app/debug/
 android/app/profile/
 android/app/release/
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
 
 # iOS generated files
 ios/Pods/

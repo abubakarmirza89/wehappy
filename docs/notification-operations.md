@@ -8,7 +8,7 @@ The email and push outbox is stored in `users.EmailDelivery`; each channel has i
 2. Set `HEARTELI_PUBLIC_URL` to the verified public HTTPS origin. Password reset links use this trusted setting, never the incoming Host header.
 3. Configure a verified `DEFAULT_FROM_EMAIL`, SMTP host/port, username/password and TLS. Use the console or locmem backend only for development. Configure sender-domain SPF/DKIM/DMARC with the selected provider.
 4. Run Celery worker plus beat: `celery -A config worker -l INFO` and `celery -A config beat -l INFO`. The beat queues opted-in reminders and processes due delivery rows every minute. As an alternative, schedule `python manage.py process_hearteli_notifications` every minute. Choose one scheduler.
-5. For push, configure Firebase Admin credentials and native Flutter Firebase application configuration. Users explicitly enable device notifications in Settings; already-authorised devices re-register on app open. No permission request occurs during splash/onboarding.
+5. For Android push, register the app in Firebase using application ID `com.hearteli.app` and keep the resulting `google-services.json` in `mobile/android/app/`. Enable Firebase Cloud Messaging HTTP v1. Put a Firebase service-account JSON on the backend host as a secret file and set `FIREBASE_CREDENTIALS_PATH` to its path; never use `google-services.json` as server credentials or commit/share a service-account key. Android requests notification permission after sign-in and registers the device token after permission is granted.
 6. Verify one real SMTP delivery, reset link and Android/iOS push with a test account before release. Do not send test messages to real contacts without their instruction.
 
 ## Events
@@ -23,14 +23,15 @@ The email and push outbox is stored in `users.EmailDelivery`; each channel has i
 | Acknowledgement / cannot help | Bounded update | Yes | No recipient commentary |
 | Support conversation message | Generic sign-in link | Yes | Chat text excluded |
 | Private check-in | None | None | Never automatically broadcasts |
-| Daily reminder | Opt-in, scheduled in selected timezone | Yes | No mood value |
+| Daily email reminder | Opt-in, scheduled in selected timezone | Yes | No mood value |
+| Daily push prompts | Three randomly scheduled pushes between 08:00 and 22:00 in the user's selected timezone, for active users with an authorised device token; slots are at least four hours apart and continue after check-in | Yes | Generic prompt only |
 | Support outcome prompt | Optional after 24h acknowledgement | Yes | Member-only reflection |
 | Workspace membership / role | Status and privacy reminder | Yes | No personal mood or notes |
 | Appointment create/update/cancel | Status update | Yes | No reason or context notes |
 | Appointment reminder | Within 24h of appointment | Yes | Date/time UTC; no private reason |
 | Permanent email nudge failure | Sender notice | Yes | No recipient content |
 
-Optional email notifications respect email opt-out, nudge preferences and quiet hours, including intervals crossing midnight. Welcome/password security emails bypass quiet hours. Quiet hours use an explicit IANA timezone. Reminders use one event key per member/date and stale reminders are suppressed. Consent and relationship existence are rechecked before delivery; opening a nudge always rechecks authorisation.
+Optional email notifications respect email opt-out, nudge preferences and quiet hours, including intervals crossing midnight. Welcome/password security emails bypass quiet hours. Quiet hours use an explicit IANA timezone. The three daily push prompts are randomized inside 08:00–22:00 in that timezone and intentionally do not follow the in-app reminder toggle or quiet hours; recipients can disable Hearteli notifications in Android system settings. Their randomized slots are idempotent per user/day/slot, stale prompts are suppressed, and dispatch also enforces a four-hour minimum gap. Consent and relationship existence are rechecked before delivery; opening a nudge always rechecks authorisation.
 
 ## Meaning of status
 
@@ -42,4 +43,4 @@ Inspect delivery metadata in Django admin. The admin view does not expose reset-
 
 ## Current limits
 
-Live SMTP and FCM delivery have not been verified: no production provider credentials or native Firebase project files were supplied. The `rich_lock_preview` preference currently remains conservative: notifications keep minimal text even if enabled. Appointment times are stored as UTC; Flutter converts newly requested local times to UTC, and appointment lists/reschedule controls label UTC explicitly. Provider-specific calendars, duration-based overlap checking and payment/refund automation remain separate integrations.
+Live SMTP and FCM delivery have not been verified against production credentials. Android notification delivery when the app is backgrounded or terminated requires the backend Celery worker and beat (or the management-command scheduler) to remain available; Android force-stop, revoked OS permission, network delays, and device power-management restrictions can prevent timely display. iOS also requires its Firebase plist, APNs credentials and entitlements. The `rich_lock_preview` preference currently remains conservative: notifications keep minimal text even if enabled. Appointment times are stored as UTC; Flutter converts newly requested local times to UTC, and appointment lists/reschedule controls label UTC explicitly. Provider-specific calendars, duration-based overlap checking and payment/refund automation remain separate integrations.

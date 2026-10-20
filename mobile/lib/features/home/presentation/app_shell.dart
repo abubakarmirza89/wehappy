@@ -35,7 +35,17 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     FirebaseService(widget.apiClient).initialize(
-      requestPermission: false,
+      onForegroundNotification: (title, body) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('$title: $body'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      },
       onNudge: (id) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted)

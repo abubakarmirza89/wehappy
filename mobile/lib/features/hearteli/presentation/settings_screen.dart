@@ -355,7 +355,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       children: [
         const PageIntro(
           title: 'A gentle pace',
-          subtitle: 'You choose when to hear from Hearteli.',
+          subtitle: 'Manage your email reminders and notification quiet hours.',
         ),
         const SizedBox(height: 18),
         OutlinedButton.icon(
@@ -401,9 +401,16 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           child: Text('Reminder at ${reminderTime.format(context)}'),
         ),
         SwitchListTile(
-          title: const Text('Daily reminder'),
+          title: const Text('Daily email reminder'),
+          subtitle: const Text('This controls the daily email, not push prompts.'),
           value: reminder,
           onChanged: (v) => setState(() => reminder = v),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            'Hearteli also sends three generic push prompts at random times between 08:00 and 22:00 in your selected timezone, at least four hours apart. They continue after check-in and are not controlled by this toggle or quiet hours. Use Android notification settings to stop push prompts.',
+          ),
         ),
         SwitchListTile(
           title: const Text('Nudge notifications'),
@@ -420,6 +427,9 @@ class _NotificationSettingsState extends State<NotificationSettings> {
         const Text(
           'Quiet hours',
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+        ),
+        const Text(
+          'Quiet hours apply to email and event notifications, not the scheduled daily push prompts.',
         ),
         OutlinedButton(
           onPressed: () async {

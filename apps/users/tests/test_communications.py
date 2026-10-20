@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from apps.users.models import User, EmailDelivery, Notification, Appointment
 from apps.users.communications import dispatch_email_batch, request_password_reset
-from apps.users.reminders import queue_due_reminders
+from apps.users.reminders import daily_push_reminder_minutes, queue_due_push_reminders, queue_due_reminders
 from apps.tracking.models import CircleConnection, EmpathyNudge, MoodCheckIn, HearteliPreferences, NudgeMessage
 import uuid
 
@@ -114,6 +114,75 @@ class CommunicationTests(TestCase):
         queue_due_reminders(at); queue_due_reminders(at)
         self.assertEqual(EmailDelivery.objects.filter(kind='reminder', channel='email').count(), 1)
         self.assertFalse(EmailDelivery.objects.filter(kind='reminder', recipient=self.recipient).exists())
+
+    def test_daily_push_prompts_are_random_spaced_and_idempotent(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from apps.users.models import DeviceToken
+
+        self.clear_welcome()
+        DeviceToken.objects.create(user=self.member, token='daily-prompt-device')
+        day = timezone.localdate()
+        minutes = daily_push_reminder_minutes(self.member.pk, day)
+        self.assertEqual(len(minutes), 3)
+        self.assertTrue(all(
+            later - earlier >= 4 * 60
+            for earlier, later in zip(minutes, minutes[1:])
+        ))
+        MoodCheckIn.objects.create(
+            user=self.member,
+            date=day,
+            feeling_category='good',
+        )
+        for minute in minutes:
+            local = datetime.combine(
+                day,
+                time(minute // 60, minute % 60),
+                tzinfo=ZoneInfo('UTC'),
+            )
+            queue_due_push_reminders(local)
+            queue_due_push_reminders(local)
+        prompts = EmailDelivery.objects.filter(
+            kind='daily_prompt',
+            recipient=self.member,
+            channel='push',
+        )
+        self.assertEqual(prompts.count(), 3)
+        self.assertEqual(prompts.first().status, 'pending')
+        self.assertFalse(EmailDelivery.objects.filter(
+            kind='daily_prompt',
+            recipient=self.recipient,
+        ).exists())
+
+    def test_daily_push_delivery_enforces_four_hour_minimum_gap(self):
+        from apps.users.communications import delivery_allowed
+        from apps.users.models import DeviceToken
+
+        DeviceToken.objects.create(user=self.member, token='daily-gap-device')
+        now = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        HearteliPreferences.objects.create(user=self.member, timezone_name='UTC')
+        EmailDelivery.objects.create(
+            recipient=self.member,
+            event_key=f'daily-prompt:{self.member.pk}:{now.date()}:0',
+            kind='daily_prompt',
+            channel='push',
+            subject='Previous prompt',
+            message='Generic prompt.',
+            status='sent',
+            sent_at=now - timedelta(hours=3),
+        )
+        next_delivery = EmailDelivery.objects.create(
+            recipient=self.member,
+            event_key=f'daily-prompt:{self.member.pk}:{now.date()}:1',
+            kind='daily_prompt',
+            channel='push',
+            subject='Next prompt',
+            message='Generic prompt.',
+        )
+        with patch('apps.users.communications.timezone.now', return_value=now):
+            self.assertEqual(delivery_allowed(next_delivery), 'defer')
+        with patch('apps.users.communications.timezone.now', return_value=now + timedelta(hours=1)):
+            self.assertEqual(delivery_allowed(next_delivery), 'send')
 
     def test_mark_read_is_scoped_to_recipient(self):
         notification = Notification.objects.filter(recipient=self.member).first()
