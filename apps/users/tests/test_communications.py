@@ -92,7 +92,7 @@ class CommunicationTests(TestCase):
             dispatch_email_batch()
         self.assertEqual(EmailDelivery.objects.get(kind='nudge', channel='email').status, 'pending')
 
-    def test_smtp_failure_retries_without_recreating_event(self):
+    def test_email_failure_retries_without_recreating_event(self):
         self.clear_welcome(); self.nudge()
         with patch('apps.users.communications.EmailMultiAlternatives.send', side_effect=OSError('provider failure')):
             dispatch_email_batch()

@@ -4,7 +4,7 @@ Hearteli is a private check-in and consent based support app. This branch combin
 
 ## Local backend
 
-Use Python 3.11 or later and install `requirements.txt` in a virtual environment. Configure `.env` with a unique `DJANGO_SECRET_KEY`, `DJANGO_ADMIN_URL=admin/`, `DJANGO_DEBUG=True`, and `DB_ENGINE=sqlite` for local development. The existing Stripe settings also require test keys (`STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`). Run `python manage.py migrate` then `python manage.py runserver`. The API is at `/api/`, the workplace console at `/work/`, and API schema at `/api/docs/`.
+Use Python 3.11 or later and install `requirements.txt` in a virtual environment. Configure `.env` with a unique `DJANGO_SECRET_KEY`, `DJANGO_ADMIN_URL=admin/`, `DJANGO_DEBUG=True`, and `DB_ENGINE=sqlite` for local development. Transactional email uses Emailit's API; set `EMAILIT_API_KEY` and a `DEFAULT_FROM_EMAIL` on a verified sending domain. The existing Stripe settings also require test keys (`STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`). Run `python manage.py migrate` then `python manage.py runserver`. The API is at `/api/`, the workplace console at `/work/`, and API schema at `/api/docs/`.
 
 For an existing database created before migrations were tracked, back up the database, compare the schema, and baseline only matching initial tables using Django's `migrate --fake-initial` before applying tracking 0003–0005. Do not fake the later migrations. New databases use ordinary `migrate`.
 

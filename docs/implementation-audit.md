@@ -114,7 +114,7 @@ Only **one new lifestyle photo** was generated. The second placement is a reuse,
 5. Therapist provider calendar, verified profiles, filters, duration/availability, cancellation terms and approved payment/refund policy. No real payment automation has been verified.
 6. Maintained jurisdiction-specific safety resources with offline fallback and explicit urgent-path diversion.
 7. Complete privacy-safe analytics event schema, activation/support KPI calculations, exhaustive data export/retention and admin least-privilege/billing/support workflows. The legacy repo still contains score/AI-related modules outside the new Hearteli path; they require a separate removal/migration decision before release.
-8. Configure verified SMTP/sender DNS, production origin, background workers and native Firebase files, then run real test-account delivery checks. Provider credentials and hosting/native configuration were not supplied. Do not paste account passwords into chat.
+8. Configure Emailit with an API key, verified sending domain and sender address, plus production origin, background workers and native Firebase files; then run real test-account delivery checks. Provider credentials and hosting/native configuration were not supplied. Do not paste account passwords into chat.
 
 ## Verification
 

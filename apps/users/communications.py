@@ -1,4 +1,4 @@
-"""Durable transactional email: SMTP acceptance is not proof of delivery/read."""
+"""Durable transactional email: provider acceptance is not proof of delivery/read."""
 from datetime import timedelta
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -116,10 +116,9 @@ def delivery_allowed(delivery):
 
 
 def dispatch_email_batch(limit=100):
-    """Row locks prevent concurrent workers. Failed SMTP submissions retry with backoff.
+    """Row locks prevent concurrent workers. Failed Emailit submissions retry with backoff.
 
-    SMTP cannot guarantee exactly-once delivery across a worker crash after acceptance.
-    Stable Message-ID and event keys help providers deduplicate retries.
+    Emailit's idempotency key protects retries for 24 hours after acceptance.
     """
     totals = {'sent': 0, 'failed': 0, 'suppressed': 0, 'deferred': 0}
     ids = list(EmailDelivery.objects.filter(status__in=['pending', 'retry'],
@@ -170,7 +169,7 @@ def dispatch_email_batch(limit=100):
                 mail.attach_alternative(render_to_string('emails/transactional.html', context), 'text/html')
                 try:
                     if mail.send(fail_silently=False) != 1:
-                        raise RuntimeError('SMTP did not accept the message')
+                        raise RuntimeError('Emailit did not accept the message')
                     delivery.status = 'sent'; delivery.sent_at = timezone.now(); delivery.error_code = ''
                     totals['sent'] += 1
                     if delivery.kind == 'password_reset':
