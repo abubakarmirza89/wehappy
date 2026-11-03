@@ -39,7 +39,11 @@ class CommunicationTests(TestCase):
         from rest_framework.authtoken.models import Token
         self.clear_welcome()
         request_password_reset('MEMBER@example.com')
+        self.assertEqual(len(mail.outbox), 1)
+        reset_delivery = EmailDelivery.objects.get(kind='password_reset')
+        self.assertEqual(reset_delivery.status, 'sent')
         dispatch_email_batch()
+        self.assertEqual(len(mail.outbox), 1)
         self.assertIn('https://hearteli.example/reset-password/', mail.outbox[0].body)
         import re
         link = re.search(r'https://hearteli.example/reset-password/\?\S+', mail.outbox[0].body).group()

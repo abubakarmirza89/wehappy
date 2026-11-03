@@ -36,9 +36,11 @@ def request_password_reset(email):
     import uuid
     query = urlencode({'uid': urlsafe_base64_encode(force_bytes(user.pk)),
                        'token': default_token_generator.make_token(user)})
-    queue_email(user, 'password_reset', 'Reset your Hearteli password',
+    delivery = queue_email(user, 'password_reset', 'Reset your Hearteli password',
         'Use the secure link below to choose a new password. If you did not request this, ignore this email.',
         key=f'reset:{user.pk}:{uuid.uuid4()}', path=f'/reset-password/?{query}')
+    if delivery and delivery.status in ('pending', 'retry'):
+        dispatch_email_batch(limit=1, delivery_ids=[delivery.pk])
 
 
 def password_changed(user):
@@ -115,14 +117,21 @@ def delivery_allowed(delivery):
     return 'send'
 
 
-def dispatch_email_batch(limit=100):
+def dispatch_email_batch(limit=100, delivery_ids=None):
     """Row locks prevent concurrent workers. Failed SMTP submissions retry with backoff.
 
     SMTP cannot guarantee exactly-once delivery if a worker fails after server acceptance.
     """
     totals = {'sent': 0, 'failed': 0, 'suppressed': 0, 'deferred': 0}
-    ids = list(EmailDelivery.objects.filter(status__in=['pending', 'retry'],
-        next_attempt_at__lte=timezone.now()).order_by('id').values_list('id', flat=True)[:limit])
+    due_deliveries = EmailDelivery.objects.filter(
+        status__in=['pending', 'retry'],
+        next_attempt_at__lte=timezone.now(),
+    )
+    if delivery_ids is not None:
+        due_deliveries = due_deliveries.filter(pk__in=delivery_ids)
+    ids = list(
+        due_deliveries.order_by('id').values_list('id', flat=True)[:limit]
+    )
     for delivery_id in ids:
         with transaction.atomic():
             delivery = EmailDelivery.objects.select_for_update().select_related('recipient').get(pk=delivery_id)

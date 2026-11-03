@@ -137,13 +137,14 @@ class AuthAPITests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("reset", mail.outbox[0].subject.lower())
+        self.assertIn(self.user_data["email"], mail.outbox[0].to)
         from apps.users.communications import dispatch_email_batch
         from apps.users.models import EmailDelivery
         EmailDelivery.objects.filter(kind='welcome').update(status='suppressed')
         dispatch_email_batch()
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("reset", mail.outbox[0].subject.lower())
-        self.assertIn(self.user_data["email"], mail.outbox[0].to)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_reset_password_with_valid_token_sets_new_password(self):
