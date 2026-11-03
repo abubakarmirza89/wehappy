@@ -133,6 +133,9 @@ class CommunicationTests(TestCase):
 
     def test_appointment_create_conflict_reschedule_cancel_and_emails(self):
         therapist = User.objects.create_user(name='Email Therapist', email='therapist@example.com', password='StrongPass123!', phone_number='789', is_therapist=True)
+        therapist.therapist_profile.is_available=True
+        therapist.therapist_profile.hourly_rate=100
+        therapist.therapist_profile.save()
         self.client.force_authenticate(self.member)
         tomorrow = timezone.now().date() + timedelta(days=1)
         path = f'/api/users/create-appointment/{therapist.pk}/'

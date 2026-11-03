@@ -24,3 +24,10 @@ Before production: run Flutter dependency resolution, analyzer, widget/device te
 
 
 See [the 43-screen implementation audit](docs/implementation-audit.md) for code present versus partial features, the image inventory and document acceptance coverage. See [notification operations](docs/notification-operations.md) to configure transactional email, optional FCM, workers and timezone-aware reminders. The audit explicitly lists remaining workspace consent/analytics, therapist calendar, safety-resource, analytics and release QA work.
+
+
+## Therapist practice and business billing update
+
+See [the practice/billing handoff](docs/practice-and-business-billing.md). The new branch connects therapist application/review, mobile/web practice navigation, private appointment chat, verified 10% commission/90% net earnings, reserved withdrawal balances, and a multi-page business console with Stripe subscription Checkout/Portal and server-side paid-access/seat checks. Apply all migrations before enabling these pages.
+
+67 backend tests pass on this revision. Changed Dart files passed parser/format checks; Flutter package analysis and native builds remain pending. Configure approved Stripe prices, credentials, webhooks and payout operations, then complete test-mode billing before using live payments. No real charge or payout was performed.

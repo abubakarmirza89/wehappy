@@ -1,5 +1,7 @@
 # Hearteli implementation audit — 2 October 2026
 
+Historical audit. For the 4 November therapist/practice and business subscription implementation, see `docs/practice-and-business-billing.md`; that update supersedes the related gaps below.
+
 Reviewed both supplied documents: **Hearteli Product UX Architecture v1.0** and **Hearteli Production Screen Specification v1.0** against the current backend, Flutter code, web templates and tracked assets on `feature/hearteli-v1`.
 
 **Release conclusion: the complete document-defined product is not yet production-ready.** Core support-loop code exists and the backend acceptance suite passes, but a code file or screen name is not proof of a complete screen, every edge state, pixel fidelity or real provider delivery. All Flutter screens still need build/device/accessibility and screenshot comparison QA. Earlier claims of “same to same” would not be substantiated by these checks.

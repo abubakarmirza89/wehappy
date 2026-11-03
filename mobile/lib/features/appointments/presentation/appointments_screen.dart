@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../therapist/presentation/practice_shell.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../hearteli/presentation/components.dart';
@@ -142,16 +145,86 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                       ),
                       Text('${raw['date']} · ${raw['time']} UTC'),
                       Text('${raw['location']} · ${raw['status']}'),
+                      TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AppointmentChatScreen(
+                              apiClient: widget.apiClient,
+                              id: raw['id'] as int,
+                            ),
+                          ),
+                        ),
+                        child: const Text('Session chat'),
+                      ),
+                      if (raw.containsKey('therapist') &&
+                          raw['payment_status'] == 'pending' &&
+                          raw['status'] == 'BOOKED')
+                        TextButton(
+                          onPressed: () async {
+                            try {
+                              final data = await widget.apiClient.post(
+                                '/api/users/appointment/${raw['id']}/checkout/',
+                                body: {},
+                              );
+                              if (!await launchUrl(
+                                    Uri.parse('${data['url']}'),
+                                    mode: LaunchMode.externalApplication,
+                                  ) &&
+                                  mounted)
+                                showCalmMessage(
+                                  context,
+                                  'Could not open secure payment.',
+                                );
+                            } catch (e) {
+                              if (mounted) showCalmMessage(context, '$e');
+                            }
+                          },
+                          child: const Text('Pay securely'),
+                        ),
+                      if (raw.containsKey('user') &&
+                          ['BOOKED', 'IN_PROGRESS'].contains(raw['status']))
+                        PopupMenuButton<String>(
+                          onSelected: (status) async {
+                            try {
+                              await widget.apiClient.patch(
+                                '/api/users/appointment/${raw['id']}/',
+                                body: {'status': status},
+                              );
+                              await load();
+                            } catch (e) {
+                              if (mounted) showCalmMessage(context, '$e');
+                            }
+                          },
+                          itemBuilder: (_) => raw['status'] == 'BOOKED'
+                              ? const [
+                                  PopupMenuItem(
+                                    value: 'IN_PROGRESS',
+                                    child: Text('Start session'),
+                                  ),
+                                ]
+                              : const [
+                                  PopupMenuItem(
+                                    value: 'COMPLETED',
+                                    child: Text('Complete session'),
+                                  ),
+                                ],
+                          child: const Padding(
+                            padding: EdgeInsets.all(14),
+                            child: Text('Update session status'),
+                          ),
+                        ),
                       if (raw['status'] == 'BOOKED')
                         Wrap(
                           spacing: 10,
                           children: [
-                            OutlinedButton(
-                              onPressed: busy
-                                  ? null
-                                  : () => change(raw as Map, false),
-                              child: const Text('Reschedule'),
-                            ),
+                            if (raw.containsKey('therapist'))
+                              OutlinedButton(
+                                onPressed: busy
+                                    ? null
+                                    : () => change(raw as Map, false),
+                                child: const Text('Reschedule'),
+                              ),
                             TextButton(
                               onPressed: busy
                                   ? null

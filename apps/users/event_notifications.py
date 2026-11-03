@@ -1,7 +1,7 @@
 """Event hooks only create durable rows; external sends happen in the worker."""
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-from apps.users.models import User, Appointment
+from apps.users.models import User, Appointment, AppointmentMessage
 from apps.tracking.models import CircleConnection, EmpathyNudge, NudgeMessage, WorkspaceMembership, WorkspaceRoleAudit
 from .communications import queue_email
 
@@ -93,3 +93,13 @@ def role_changed(sender, instance, created, raw=False, **kwargs):
         queue_email(instance.member, 'workspace_role', 'Your Hearteli workspace role changed',
             'Your workspace role changed. Review any support permissions before sharing again. Personal check-ins stay private.',
             key=f'role:{instance.pk}', path='/notifications/')
+
+
+@receiver(post_save,sender=AppointmentMessage)
+def appointment_message_event(sender,instance,created,raw=False,**kwargs):
+    if created and not raw:
+        a=instance.appointment
+        other=a.therapist if instance.author_id==a.user_id else a.user
+        queue_email(other,'appointment_message','A private Hearteli session message',
+            'You have a new appointment message. Sign in to read it privately.',
+            key=f'appointment-message:{instance.pk}',path=f'/practice/appointments/{a.pk}/',target_id=a.pk)
