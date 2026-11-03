@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core import mail
+from apps.users.tests.billing_helpers import active_subscription
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
@@ -100,6 +101,7 @@ class WorkspaceAndNotificationAPITests(APITestCase):
             description="Bulk invite test",
             workspace_type=Workspace.WORKSPACE_TYPE_OFFICE,
         )
+        active_subscription(workspace)
         second_member = User.objects.create_user(
             name="Second Member",
             email="second@example.com",

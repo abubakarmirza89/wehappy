@@ -73,6 +73,7 @@ class Appointment(models.Model):
     commission = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     therapist_earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     payment_status = models.CharField(max_length=20, choices=(('pending', 'Pending'), ('paid', 'Paid'), ('refunded', 'Refunded')), default='pending')
+    payment_checkout_session_id = models.CharField(max_length=200, blank=True, default='')
     payment_intent_id = models.CharField(max_length=255, blank=True, default='')
     charge_id = models.CharField(max_length=255, blank=True, default='')
     refund_id = models.CharField(max_length=255, blank=True, default='')
@@ -161,6 +162,8 @@ class WithdrawalRequest(models.Model):
     admin_note = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(null=True, blank=True)
+    payout_reference = models.CharField(max_length=200, blank=True)
+    processed_by = models.ForeignKey(User,on_delete=models.SET_NULL,null=True,blank=True,related_name='processed_withdrawals')
 
     class Meta:
         ordering = ['-created_at']
@@ -230,3 +233,63 @@ class EmailDelivery(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=['status', 'next_attempt_at'], name='hearteli_email_due')]
+
+
+class TherapistApplication(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='therapy_application')
+    bio = models.TextField()
+    credentials = models.TextField()
+    license_number = models.CharField(max_length=120)
+    location = models.CharField(max_length=120)
+    modalities = models.CharField(max_length=120, default='Online')
+    status = models.CharField(max_length=16, default='pending', choices=[('pending','Pending review'),('approved','Approved'),('rejected','Rejected')])
+    review_note = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class TherapyLedger(models.Model):
+    therapist = models.ForeignKey(User, on_delete=models.PROTECT, related_name='therapy_ledger')
+    appointment = models.ForeignKey(Appointment, on_delete=models.PROTECT)
+    event_key = models.CharField(max_length=200, unique=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    kind = models.CharField(max_length=20, choices=[('earning','Earning'),('refund','Refund')])
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class AppointmentMessage(models.Model):
+    appointment = models.ForeignKey(Appointment, on_delete=models.CASCADE, related_name='messages')
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    body = models.CharField(max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering = ['created_at', 'id']
+
+
+class BillingPlan(models.Model):
+    name = models.CharField(max_length=100)
+    stripe_price_id = models.CharField(max_length=120, unique=True)
+    monthly_price = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, default='usd')
+    member_limit = models.PositiveIntegerField(default=20)
+    active = models.BooleanField(default=True)
+    def __str__(self):
+        return self.name
+
+
+class BusinessSubscription(models.Model):
+    workspace = models.OneToOneField('tracking.Workspace', on_delete=models.CASCADE, related_name='billing')
+    plan = models.ForeignKey(BillingPlan, on_delete=models.PROTECT)
+    checkout_session_id = models.CharField(max_length=200, blank=True)
+    customer_id = models.CharField(max_length=120, blank=True)
+    stripe_subscription_id = models.CharField(max_length=120, unique=True, null=True, blank=True)
+    status = models.CharField(max_length=32, default='incomplete')
+    period_end = models.DateTimeField(null=True, blank=True)
+    cancel_at_period_end = models.BooleanField(default=False)
+    @property
+    def entitled(self):
+        return self.status in ('active', 'trialing') and self.period_end is not None and self.period_end > timezone.now()
+
+
+class PaymentEvent(models.Model):
+    event_id = models.CharField(max_length=200, unique=True)
+    processed_at = models.DateTimeField(auto_now_add=True)

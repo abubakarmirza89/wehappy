@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../therapist/presentation/practice_shell.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/notifications/firebase_service.dart';
 import '../../../core/session/session_store.dart';
@@ -21,7 +23,9 @@ class AppShell extends StatefulWidget {
     super.key,
     required this.sessionStore,
     required this.apiClient,
+    this.personalOnly = false,
   });
+  final bool personalOnly;
   final SessionStore sessionStore;
   final ApiClient apiClient;
   @override
@@ -76,6 +80,21 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.sessionStore.isTherapist && !widget.personalOnly)
+      return PracticeShell(
+        onPersonal: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AppShell(
+              apiClient: widget.apiClient,
+              sessionStore: widget.sessionStore,
+              personalOnly: true,
+            ),
+          ),
+        ),
+        apiClient: widget.apiClient,
+        sessionStore: widget.sessionStore,
+      );
     if (!widget.sessionStore.hasCompletedSetup)
       return FirstRunSetup(
         apiClient: widget.apiClient,

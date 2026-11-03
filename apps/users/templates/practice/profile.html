@@ -1,0 +1,1 @@
+{% extends 'practice/base.html' %}{% block practice %}<section class="panel"><h1>Profile & availability</h1><p>Rates use USD. Hearteli deducts 10% from verified session payments.</p><form method="post">{% csrf_token %}{{ form.as_p }}<button>Save profile</button></form></section>{% endblock %}

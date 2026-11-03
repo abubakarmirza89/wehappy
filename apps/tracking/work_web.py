@@ -112,25 +112,13 @@ def create_workspace(request):
 
 @login_required(login_url='/work/login/')
 def dashboard(request, pk):
-    workspace = admin_workspace(request.user, pk)
-    if workspace is None:
-        return HttpResponseForbidden('You do not have admin access to this workspace.')
-    members = workspace.memberships.select_related('user').order_by('role', 'user__name')
-    approved_count = members.filter(status=WorkspaceMembership.STATUS_APPROVED).count()
-    context = {
-        'workspace': workspace, 'members': members,
-        'approved_count': approved_count, 'pending_count': members.filter(status='pending').count(),
-        'aggregate_available': False, 'privacy_threshold': 10,
-        'resources': workspace.resources.order_by('title'),
-        'role_events': workspace.role_events.select_related('actor', 'member').order_by('-created_at')[:20],
-        'is_owner': workspace.owner_id == request.user.id,
-        'form': ResourceForm(),
-    }
-    return render(request, 'work/dashboard.html', context)
+    from .business_web import page
+    return page(request, pk)
 
 
 @login_required(login_url='/work/login/')
 @require_POST
+@transaction.atomic
 def invite(request, pk):
     workspace = admin_workspace(request.user, pk)
     if workspace is None or workspace.owner_id != request.user.id:
@@ -138,6 +126,13 @@ def invite(request, pk):
     email = request.POST.get('email', '').strip()
     member = User.objects.filter(email__iexact=email, is_active=True).first()
     if member and member.id != workspace.owner_id:
+        Workspace.objects.select_for_update().get(pk=workspace.pk)
+        from .subscriptions import require_subscription,SubscriptionRequired
+        try:
+            require_subscription(workspace,adding_member=not WorkspaceMembership.objects.filter(workspace=workspace,user=member).exists())
+        except SubscriptionRequired as exc:
+            from django.http import JsonResponse
+            return JsonResponse({'detail':str(exc.detail)},status=402)
         WorkspaceMembership.objects.get_or_create(workspace=workspace, user=member, defaults={
             'role': WorkspaceMembership.ROLE_EMPLOYEE, 'status': WorkspaceMembership.STATUS_PENDING,
             'invited_by': request.user})

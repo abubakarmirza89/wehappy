@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../therapist/presentation/practice_shell.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -30,6 +32,17 @@ class SettingsScreen extends StatelessWidget {
       padding: screenPadding,
       children: [
         const PageIntro(title: 'Your space, your choices'),
+        if (!sessionStore.isTherapist)
+          OutlinedButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    TherapistApplicationScreen(apiClient: apiClient),
+              ),
+            ),
+            child: const Text('Apply as a therapist'),
+          ),
         const SizedBox(height: 22),
         HearteliCard(
           child: Column(

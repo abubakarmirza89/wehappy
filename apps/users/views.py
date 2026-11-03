@@ -268,11 +268,15 @@ def validate_appointment_slot(therapist, date, time, exclude=None):
     start = datetime.combine(date, time, tzinfo=dt_timezone.utc)
     if start <= timezone.now():
         raise ValidationError({'date': 'Choose a future appointment time (UTC).'})
-    occupied = Appointment.objects.filter(therapist=therapist, date=date, time=time).exclude(status='CANCELED')
+    # Each booking covers a 60-minute session; reject overlaps, not just identical start times.
+    occupied = Appointment.objects.filter(therapist=therapist,
+        date__range=[date-timezone.timedelta(days=1),date+timezone.timedelta(days=1)]).exclude(status='CANCELED')
     if exclude:
         occupied = occupied.exclude(pk=exclude)
-    if occupied.exists():
-        raise ValidationError({'time': 'This time is already booked. Choose another time.'})
+    for other in occupied:
+        other_start=datetime.combine(other.date,other.time,tzinfo=dt_timezone.utc)
+        if abs((other_start-start).total_seconds())<3600:
+            raise ValidationError({'time':'This time overlaps another session. Choose another time.'})
 
 
 class TherapistDashboardView(APIView):
@@ -285,7 +289,9 @@ class TherapistDashboardView(APIView):
         earned = appointments.filter(payment_status='paid').aggregate(total=Sum('therapist_earnings'))['total'] or Decimal('0')
         pending = WithdrawalRequest.objects.filter(therapist=request.user, status='pending').aggregate(total=Sum('amount'))['total'] or Decimal('0')
         profile = request.user.therapist_profile
-        return Response({'appointments': TherapistAppointmentSerializer(appointments, many=True).data, 'total_earned': earned, 'pending_withdrawals': pending, 'hourly_rate': profile.hourly_rate, 'is_available': profile.is_available})
+        from .therapy_services import balance
+        wallet = balance(request.user)
+        return Response({**wallet, 'platform_fee_percent': 10, 'appointments': TherapistAppointmentSerializer(appointments, many=True).data, 'ledger_total_earned': wallet['total_earned'], 'pending_withdrawals': pending, 'hourly_rate': profile.hourly_rate, 'is_available': profile.is_available})
 
 
 class TherapistSettingsView(APIView):
@@ -294,19 +300,10 @@ class TherapistSettingsView(APIView):
     def patch(self, request):
         if not request.user.is_therapist:
             return Response({'error': 'Therapist access required.'}, status=status.HTTP_403_FORBIDDEN)
-        profile = request.user.therapist_profile
-        if 'hourly_rate' in request.data:
-            try:
-                hourly_rate = Decimal(str(request.data['hourly_rate']))
-            except Exception:
-                return Response({'error': 'hourly_rate must be numeric.'}, status=status.HTTP_400_BAD_REQUEST)
-            if hourly_rate < 0:
-                return Response({'error': 'hourly_rate cannot be negative.'}, status=status.HTTP_400_BAD_REQUEST)
-            profile.hourly_rate = hourly_rate
-        if 'is_available' in request.data:
-            profile.is_available = bool(request.data['is_available'])
-        profile.save(update_fields=['hourly_rate', 'is_available'])
-        return Response({'hourly_rate': profile.hourly_rate, 'is_available': profile.is_available})
+        from .practice import PracticeProfileSerializer
+        serializer=PracticeProfileSerializer(request.user.therapist_profile,data=request.data,partial=True)
+        serializer.is_valid(raise_exception=True);serializer.save()
+        return Response(serializer.data)
 
 
 class WithdrawalRequestView(CreateAPIView, ListAPIView):
@@ -320,12 +317,15 @@ class WithdrawalRequestView(CreateAPIView, ListAPIView):
         if not self.request.user.is_therapist:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Therapist access required.')
+        from django.db import transaction
+        from .therapy_services import balance
+        from rest_framework.exceptions import ValidationError
         amount = serializer.validated_data['amount']
-        available = Appointment.objects.filter(therapist=self.request.user, payment_status='paid').aggregate(total=Sum('therapist_earnings'))['total'] or Decimal('0')
-        if amount <= 0 or amount > available:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError({'amount': 'Amount exceeds available therapist earnings.'})
-        serializer.save(therapist=self.request.user)
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=self.request.user.pk)
+            if amount <= 0 or amount > balance(self.request.user)['available_balance']:
+                raise ValidationError({'amount': 'Amount exceeds your available balance after reserved withdrawals.'})
+            serializer.save(therapist=self.request.user)
 
 
 class CreateAppointmentViewSet(CreateAPIView):
@@ -336,11 +336,20 @@ class CreateAppointmentViewSet(CreateAPIView):
     def perform_create(self, serializer):
         user = self.request.user
         therapist_id = self.kwargs.get("pk")
+        if str(therapist_id)==str(user.pk):
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("Choose another provider for your session.")
         therapist = User.objects.filter(pk=therapist_id, is_therapist=True, is_active=True).first()
         if therapist is None or not hasattr(therapist, 'therapist_profile'):
             from rest_framework.exceptions import NotFound
             raise NotFound('Therapist not found or unavailable.')
+        if not therapist.therapist_profile.is_available:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError('This provider is not accepting new appointments.')
         fee = therapist.therapist_profile.hourly_rate or Decimal('0')
+        if not fee.is_finite() or fee<=0:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError('This provider has not configured a valid session fee.')
         commission = (fee * settings.THERAPIST_COMMISSION_PERCENT / Decimal('100')).quantize(Decimal('0.01'))
         earnings = fee - commission
         from django.db import transaction
@@ -356,6 +365,9 @@ class FeedbackCreateView(CreateAPIView):
 
     def perform_create(self, serializer):
         therapist_id = self.kwargs.get("pk")
+        if str(therapist_id)==str(user.pk):
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("Choose another provider for your session.")
         therapist = User.objects.get(pk=therapist_id)
         appointment_id = self.request.data.get("appointment_id")
         appointment = Appointment.objects.get(pk=appointment_id)

@@ -238,7 +238,7 @@ class _BookTherapistState extends State<BookTherapist> {
       builder: (dialog) => AlertDialog(
         title: const Text('Review session request'),
         content: Text(
-          '${widget.therapist['name']}\n${date!.toIso8601String().substring(0, 10)} · ${time!.format(context)} (${DateTime.now().timeZoneName})\n$format\nFee: ${widget.therapist['therapist_profile']?['hourly_rate'] ?? 'Confirm with provider'}\n\nThis request does not share your private check-ins.',
+          '${widget.therapist['name']}\n${date!.toIso8601String().substring(0, 10)} · ${time!.format(context)} (${DateTime.now().timeZoneName})\n$format\nFee: ${widget.therapist['therapist_profile']?['hourly_rate'] ?? 'Confirm with provider'}\n\nOne session is 60 minutes. This request does not share your private check-ins.',
         ),
         actions: [
           TextButton(

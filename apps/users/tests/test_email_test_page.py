@@ -46,7 +46,7 @@ class EmailTestPageTests(TestCase):
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend")
     @patch(
-        "django.core.mail.backends.smtp.EmailBackend.send",
+        "django.core.mail.backends.smtp.EmailBackend.send_messages",
         side_effect=smtplib.SMTPAuthenticationError(535, b"authentication failed"),
     )
     def test_smtp_auth_error_is_clear_and_does_not_expose_password(self, send):
@@ -60,7 +60,7 @@ class EmailTestPageTests(TestCase):
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend")
     @patch(
-        "django.core.mail.backends.smtp.EmailBackend.send",
+        "django.core.mail.backends.smtp.EmailBackend.send_messages",
         side_effect=smtplib.SMTPConnectError(421, b"connection refused"),
     )
     def test_smtp_connection_error_is_clear(self, send):

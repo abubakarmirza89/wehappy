@@ -83,6 +83,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.tracking.subscriptions.SubscriptionGateMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -247,10 +248,10 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
 
-STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY")
-STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
-STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
-THERAPIST_COMMISSION_PERCENT = Decimal(env("THERAPIST_COMMISSION_PERCENT", default="20"))
+STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY", default="")
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+THERAPIST_COMMISSION_PERCENT = Decimal("10")
 
 # Firebase Cloud Messaging is optional in local development. Set these values
 # in the environment to enable server-side push delivery.
@@ -291,3 +292,5 @@ TWILIO_PHONE_NUMBER = env("TWILIO_PHONE_NUMBER", default="")
 HEARTELI_PUBLIC_URL = env("HEARTELI_PUBLIC_URL", default="http://localhost:8000")
 HEARTELI_EMAIL_MESSAGE_DOMAIN = env("HEARTELI_EMAIL_MESSAGE_DOMAIN", default="hearteli.local")
 PASSWORD_RESET_TIMEOUT = 3600
+
+HEARTELI_CURRENCY = env("HEARTELI_CURRENCY", default="usd").lower()

@@ -1,5 +1,5 @@
 from django.shortcuts import get_object_or_404
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Avg, Count, Q
 from django.utils import timezone
 from rest_framework import generics, mixins, permissions, status, views, viewsets
@@ -406,8 +406,10 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def bulk_invite(self, request, pk=None):
         workspace = self.get_object()
+        Workspace.objects.select_for_update().get(pk=workspace.pk)
 
         if request.user != workspace.owner:
             return Response(
@@ -439,6 +441,9 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
                 skipped_emails.append(email)
                 continue
 
+            from .subscriptions import require_subscription
+            if not WorkspaceMembership.objects.filter(workspace=workspace,user=user).exists():
+                require_subscription(workspace,adding_member=True)
             membership, created = WorkspaceMembership.objects.get_or_create(
                 workspace=workspace,
                 user=user,
@@ -576,12 +581,16 @@ class WorkspaceResourceViewSet(viewsets.ModelViewSet):
         if workspace.owner_id != self.request.user.id:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Only the workspace owner can configure resources.')
+        from .subscriptions import require_subscription
+        require_subscription(workspace)
         serializer.save()
 
     def perform_update(self, serializer):
         if serializer.instance.workspace.owner_id != self.request.user.id:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Only the workspace owner can configure resources.')
+        from .subscriptions import require_subscription
+        require_subscription(serializer.instance.workspace)
         serializer.save(workspace=serializer.instance.workspace)
 
     def perform_destroy(self, instance):
