@@ -121,6 +121,24 @@ class TherapistDetail extends StatelessWidget {
       body: ListView(
         padding: screenPadding,
         children: [
+          Text(
+            therapist['review_count'] == 0 ||
+                    therapist['average_rating'] == null
+                ? 'No client reviews yet'
+                : '${therapist['average_rating']} / 5 · ${therapist['review_count']} reviews',
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TherapistReviewsScreen(
+                  apiClient: apiClient,
+                  id: therapist['id'] as int,
+                ),
+              ),
+            ),
+            child: const Text('Read client reviews'),
+          ),
           Center(
             child: CircleAvatar(
               radius: 42,
@@ -497,6 +515,45 @@ class _ShareTherapyContextState extends State<ShareTherapyContext> {
           child: const Text('Skip'),
         ),
       ],
+    ),
+  );
+}
+
+class TherapistReviewsScreen extends StatelessWidget {
+  const TherapistReviewsScreen({
+    super.key,
+    required this.apiClient,
+    required this.id,
+  });
+  final ApiClient apiClient;
+  final int id;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Client reviews')),
+    body: FutureBuilder<dynamic>(
+      future: apiClient.get('/api/users/therapists/$id/reviews/'),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return StatusPanel(message: '${snapshot.error}');
+        if (!snapshot.hasData)
+          return const Center(child: CircularProgressIndicator());
+        final reviews = items(snapshot.data);
+        return ListView(
+          padding: screenPadding,
+          children: [
+            if (reviews.isEmpty) const Text('No client reviews yet.'),
+            for (final r in reviews)
+              HearteliCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${r['rating']} / 5 · Completed session'),
+                    Text('${r['comment']}'),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     ),
   );
 }

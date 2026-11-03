@@ -84,11 +84,22 @@ def appointment(request,pk):
             transitions={'BOOKED':{'IN_PROGRESS','CANCELED'},'IN_PROGRESS':{'COMPLETED'}}
             status=request.POST.get('status')
             if status in transitions.get(a.status,set()): a.status=status;a.save(update_fields=['status'])
+        elif request.POST.get('action')=='review':
+            from .serializers import FeedbackSerializer
+            from .reviews import submit_review
+            from rest_framework.exceptions import APIException
+            review=FeedbackSerializer(data={'appointment_id':pk,'rating':request.POST.get('rating'),'comment':request.POST.get('comment','')})
+            if review.is_valid():
+                try:
+                    submit_review(request.user,a.therapist_id,pk,review.validated_data['rating'],review.validated_data['comment'])
+                    messages.success(request,'Thank you. Your review was saved.')
+                except APIException as exc: messages.error(request,str(exc.detail))
+            else: messages.error(request,'Choose a rating from 1 to 5 and keep your review under 2000 characters.')
         elif request.POST.get('action')=='message' and a.status!='CANCELED':
             text=request.POST.get('body','').strip()
             if 1<=len(text)<=2000: AppointmentMessage.objects.create(appointment=a,author=request.user,body=text)
         return redirect('practice-appointment',pk=pk)
-    return render(request,'practice/appointment.html',{'appointment':a,'chat_messages':a.messages.select_related('author')})
+    return render(request,'practice/appointment.html',{'appointment':a,'chat_messages':a.messages.select_related('author'),'has_review':hasattr(a,'review')})
 
 class BookingForm(forms.Form):
     date=forms.DateField(widget=forms.DateInput(attrs={'type':'date'}))
@@ -123,7 +134,9 @@ def provider(request,pk):
                 a=Appointment.objects.create(user=request.user,therapist=therapist.user,fee=fee,commission=commission,therapist_earnings=fee-commission,**data)
             return redirect('practice-appointment',pk=a.pk)
         except ValidationError as exc: form.add_error(None,str(exc.detail))
-    return render(request,'practice/provider.html',{'provider':therapist,'form':form})
+    from django.db.models import Avg
+    reviews=therapist.user.feedback_therapist.all()
+    return render(request,'practice/provider.html',{'provider':therapist,'form':form,'reviews':reviews,'average_rating':reviews.aggregate(value=Avg('rating'))['value'],'review_count':reviews.count()})
 
 
 class PracticeAwareLoginView(LoginView):

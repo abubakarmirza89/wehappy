@@ -1,3 +1,4 @@
+from .reviews import TherapistReviewsView
 from .practice import ApplicationView, PracticeProfileView, AppointmentChatView, AppointmentPaymentView, AppointmentCheckoutView
 from django.urls import path
 from apps.users.views import (
@@ -21,6 +22,7 @@ app_name = "users"
 
 
 urlpatterns = [
+    path('therapists/<int:pk>/reviews/',TherapistReviewsView.as_view()),
     path('appointment/<int:pk>/checkout/',AppointmentCheckoutView.as_view()),
     path('therapist/application/', ApplicationView.as_view()),
     path('therapist/profile/', PracticeProfileView.as_view()),

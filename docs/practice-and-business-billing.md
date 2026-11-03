@@ -46,3 +46,10 @@ Signed subscription/invoice webhooks retrieve current provider state before chan
 67 backend tests passed after the overlap validation change. Desktop and 390px mobile browser checks for practice, business overview, members and billing passed without horizontal page overflow. They cover role approval, private chat, fee/ledger idempotency, withdrawal reservation, signature rejection, subscription state, seat gating, existing consent boundaries and account recovery. Dart formatter/parser checks passed for changed files. Actual Flutter dependency analysis/build, iOS/Android device runs and native notification/payment-browser return behavior are not certified by formatting.
 
 Desktop/mobile browser checks use synthetic accounts and local pages. Live Stripe checkout, bank transfers, native app builds, tax handling and payment-provider disputes have not been exercised. No real charges or payouts were made. This branch adds the connected workflows; it does not certify every item from the earlier 43-screen product specification as complete.
+
+
+## Completed-session ratings and reviews
+
+Clients can submit a 1–5 rating and optional public review after an appointment is marked COMPLETED. The server checks appointment ownership, the matching therapist, completion, and one review per appointment under a row lock; the existing one-to-one appointment constraint also prevents duplicate storage. Mobile and web session screens expose the review form only to the client. Provider profiles show average rating, count and client review text, without publishing client names, email addresses, appointment reasons or private check-in data. Reviews are public to signed-in members and the form warns clients not to include personal health details.
+
+Five targeted review tests passed (eligibility, duplicates, ownership, completion, rating range and public payload privacy). Dart formatting/parser checks passed; native device builds remain unverified.

@@ -7,13 +7,15 @@ User = get_user_model()
 
 
 class FeedbackSerializer(serializers.ModelSerializer):
+    appointment_id = serializers.IntegerField(write_only=True,min_value=1)
+    comment = serializers.CharField(max_length=2000,allow_blank=True,required=False,default="")
     user = serializers.StringRelatedField(read_only=True)
     therapist = serializers.StringRelatedField(read_only=True)
     appointment = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Feedback
-        fields = "__all__"
+        fields = ["id","user","therapist","appointment","appointment_id","rating","comment"]
 
 
 class TherapistProfileSerializer(serializers.ModelSerializer):
@@ -150,13 +152,16 @@ class UserSignupSerializer(serializers.ModelSerializer):
 
 
 class UserAppointmentSerializer(serializers.ModelSerializer):
+    therapist_id = serializers.IntegerField(read_only=True)
+    review_submitted = serializers.SerializerMethodField()
+    def get_review_submitted(self,obj): return Feedback.objects.filter(appointment=obj).exists()
     url = serializers.HyperlinkedIdentityField(
         view_name="users:appointment-detail", lookup_field="pk")
     therapist = serializers.ReadOnlyField(source="therapist.name")
 
     class Meta:
         model = Appointment
-        fields = ["id", "url", "therapist", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        fields = ["id", "therapist_id", "review_submitted", "url", "therapist", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
         read_only_fields = ["fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
 
 
@@ -189,8 +194,16 @@ class TherapistPublicProfileSerializer(serializers.ModelSerializer):
 
 
 class TherapistPublicSerializer(serializers.ModelSerializer):
+    average_rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
+    def get_average_rating(self,obj):
+        from django.db.models import Avg
+        value=obj.feedback_therapist.aggregate(value=Avg("rating"))["value"]
+        return round(value,2) if value is not None else None
+    def get_review_count(self,obj):
+        return obj.feedback_therapist.count()
     therapist_profile = TherapistPublicProfileSerializer(read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'profile_picture', 'therapist_profile']
+        fields = ['id', 'name', 'profile_picture', 'therapist_profile','average_rating','review_count']

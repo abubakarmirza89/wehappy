@@ -364,16 +364,9 @@ class FeedbackCreateView(CreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        therapist_id = self.kwargs.get("pk")
-        if str(therapist_id)==str(user.pk):
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError("Choose another provider for your session.")
-        therapist = User.objects.get(pk=therapist_id)
-        appointment_id = self.request.data.get("appointment_id")
-        appointment = Appointment.objects.get(pk=appointment_id)
-
-        serializer.save(user=self.request.user,
-                        therapist=therapist, appointment=appointment)
+        from .reviews import submit_review
+        data=serializer.validated_data
+        serializer.instance=submit_review(self.request.user,self.kwargs['pk'],data['appointment_id'],data['rating'],data.get('comment',''))
 
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
