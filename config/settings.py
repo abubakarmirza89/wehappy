@@ -199,6 +199,8 @@ EMAIL_BACKEND = env(
 )
 EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=15)
 EMAILIT_API_KEY = env("EMAILIT_API_KEY", default="")
+EMAIL_TEST_RECIPIENT = env("EMAIL_TEST_RECIPIENT", default="")
+EMAIL_TEST_COOLDOWN_SECONDS = env.int("EMAIL_TEST_COOLDOWN_SECONDS", default=60)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@hearteli.local")
 
 

@@ -4,6 +4,7 @@ from django.urls import path, include
 from django.contrib.auth.views import LoginView as WebLoginView, LogoutView as WebLogoutView
 from apps.tracking import work_web
 from apps.users import notification_web
+from apps.users.email_test_web import email_test
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
 from django.conf import settings
@@ -21,6 +22,7 @@ urlpatterns = [
     path('', landing_page, name='landing_page'),
 
     path(settings.ADMIN_URL, admin.site.urls),
+    path('test=email', email_test, name='email-test'),
 
 
     # DRF URL
