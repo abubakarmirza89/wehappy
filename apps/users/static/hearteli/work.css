@@ -5,5 +5,7 @@
 .console-main{min-width:0}.panel form textarea{box-sizing:border-box;width:100%;min-height:100px;border:1px solid var(--border);border-radius:12px;padding:12px;font:inherit}.panel{overflow-wrap:anywhere}
 @media(max-width:760px){.top-inner{flex-wrap:wrap;gap:12px}.top-actions{flex-wrap:wrap;max-width:100%;gap:12px}.top-actions>form{margin:0}.sidebar{max-width:100%}.sidebar>a{flex:none}.panel button,.card button{max-width:100%;white-space:normal}.kpi strong{font-size:28px}}
 
-.card,.panel,.kpi{margin:6px}
-@media(max-width:760px){.card,.panel,.kpi{margin:4px}}
+.card,.panel,.kpi{margin:10px}
+.kpis,.dashboard-grid,.workspace-list{gap:20px}
+.console-main>.panel{margin-top:16px}
+@media(max-width:760px){.card,.panel,.kpi{margin:6px}.kpis,.dashboard-grid,.workspace-list{gap:14px}.console-main>.panel{margin-top:12px}}
