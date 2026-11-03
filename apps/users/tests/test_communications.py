@@ -31,6 +31,8 @@ class CommunicationTests(TestCase):
         dispatch_email_batch()
         self.assertEqual(len(mail.outbox), 2)
         self.assertEqual(mail.outbox[0].alternatives[0][1], 'text/html')
+        self.assertIn('https://hearteli.example/static/hearteli/logo.png',
+            mail.outbox[0].alternatives[0][0])
         dispatch_email_batch()
         self.assertEqual(len(mail.outbox), 2)
 

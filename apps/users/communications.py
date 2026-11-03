@@ -1,10 +1,11 @@
 """Durable transactional email: provider acceptance is not proof of delivery/read."""
 from datetime import timedelta
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 from zoneinfo import ZoneInfo
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMultiAlternatives
+from django.templatetags.static import static
 from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -171,6 +172,10 @@ def dispatch_email_batch(limit=100, delivery_ids=None):
                 url = settings.HEARTELI_PUBLIC_URL.rstrip('/') + delivery.path if delivery.path else settings.HEARTELI_PUBLIC_URL
                 context = {'name': delivery.recipient.name, 'subject': delivery.subject,
                            'message': delivery.message, 'url': url,
+                           'logo_url': urljoin(
+                               settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/',
+                               static('hearteli/logo.png').lstrip('/'),
+                           ),
                            'security': delivery.kind in ('password_reset', 'password_changed')}
                 text = f"Hi {delivery.recipient.name},\n\n{delivery.message}\n\n{url}\n\nHearteli — Know when to be there."
                 mail = EmailMultiAlternatives(delivery.subject, text, settings.DEFAULT_FROM_EMAIL,
