@@ -5,13 +5,13 @@
   <div>
     <span class="eyebrow">Email setup</span>
     <h1>Test email delivery</h1>
-    <p>Send a test message through the email provider configured for this server.</p>
+    <p>Send a test message through the SMTP server configured for this site.</p>
     <p>The destination is fixed in the server environment. Visitors cannot enter another recipient address.</p>
-    <div class="quote">A successful response means the provider accepted the message, not that it reached the inbox.</div>
+    <div class="quote">A successful response means the SMTP server accepted the message, not that it reached the inbox.</div>
   </div>
   <div class="card auth-card">
     <h2>Send a test email</h2>
-    <p class="muted">This public page can send only to the single inbox configured by the site owner.</p>
+    <p class="muted">This public page can send only to the single test inbox configured by the site owner.</p>
     {% for message in messages %}
       <p class="{% if message.tags == 'error' %}error{% else %}pill{% endif %}" role="status">{{ message }}</p>
     {% endfor %}

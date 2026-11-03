@@ -23,6 +23,7 @@ urlpatterns = [
 
     path(settings.ADMIN_URL, admin.site.urls),
     path('test=email', email_test, name='email-test'),
+    path('test=email/', email_test),
 
 
     # DRF URL

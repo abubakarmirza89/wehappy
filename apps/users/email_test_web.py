@@ -2,7 +2,6 @@ import hashlib
 import logging
 import smtplib
 
-import requests
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -24,37 +23,24 @@ class EmailTestForm(forms.Form):
     )
 
 
-def _provider_error(exc):
-    if isinstance(exc, requests.HTTPError):
-        response = exc.response
-        status_code = response.status_code if response is not None else None
-        explanations = {
-            400: "Emailit rejected the request. Check the sender address and email settings.",
-            401: "Emailit rejected the API key. Check EMAILIT_API_KEY.",
-            402: "The Emailit workspace has insufficient credits.",
-            403: "Emailit denied this send. Check the verified sender domain and production access.",
-            422: "Emailit rejected the sender or message data. Check the verified sender domain.",
-            429: "Emailit rate limit reached. Wait briefly, then try again.",
-        }
-        if status_code is not None and status_code >= 500:
-            explanation = "Emailit is temporarily unavailable. Try again later."
-        else:
-            explanation = explanations.get(
-                status_code,
-                "Emailit rejected the request. Check the API response in your Emailit dashboard.",
-            )
-        return f"Emailit returned HTTP {status_code}. {explanation}"
-    if isinstance(exc, requests.Timeout):
-        return "The connection to Emailit timed out. Check server connectivity and try again."
-    if isinstance(exc, requests.ConnectionError):
-        return "Could not connect to Emailit. Check the server's outbound HTTPS connection."
+def _smtp_error(exc):
     if isinstance(exc, ImproperlyConfigured):
         return str(exc)
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return "SMTP authentication failed. Check EMAIL_HOST_USER and EMAIL_HOST_PASSWORD."
+    if isinstance(exc, smtplib.SMTPConnectError):
+        return f"Could not connect to the SMTP server (code {exc.smtp_code}). Check EMAIL_HOST and EMAIL_PORT."
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return "The SMTP server refused the test recipient. Check the recipient and your provider's sending rules."
+    if isinstance(exc, smtplib.SMTPResponseException):
+        return f"The SMTP server rejected the message (code {exc.smtp_code}). Check your sender address and SMTP provider settings."
     if isinstance(exc, smtplib.SMTPException):
-        return f"The configured email backend reported {type(exc).__name__}. Check its settings."
-    if isinstance(exc, (OSError, RuntimeError)):
-        return f"Email was not accepted ({type(exc).__name__}). Check the server logs and email settings."
-    return f"Email could not be submitted ({type(exc).__name__}). Check the server logs and email settings."
+        return f"SMTP could not send the message ({type(exc).__name__}). Check TLS/SSL and SMTP settings."
+    if isinstance(exc, OSError):
+        return "Could not reach the SMTP server. Check EMAIL_HOST, EMAIL_PORT, and outbound server connectivity."
+    if isinstance(exc, RuntimeError):
+        return f"Email was not accepted ({type(exc).__name__}). Check the server logs and SMTP settings."
+    return f"Email could not be sent ({type(exc).__name__}). Check the server logs and SMTP settings."
 
 
 @require_http_methods(["GET", "POST"])
@@ -90,11 +76,11 @@ def email_test(request):
             return render(request, "work/email_test.html", {"form": form})
         text = (
             "This is a test email from Hearteli.\n\n"
-            "This message checks the configured transactional email service."
+            "This message checks the configured SMTP server."
         )
         html = (
             "<p>This is a test email from <strong>Hearteli</strong>.</p>"
-            "<p>This message checks the configured transactional email service.</p>"
+            "<p>This message checks the configured SMTP server.</p>"
         )
         email = EmailMultiAlternatives(
             subject="Hearteli email delivery test",
@@ -109,19 +95,19 @@ def email_test(request):
                 raise RuntimeError("The email backend did not accept the message.")
         except (
             ImproperlyConfigured,
-            requests.RequestException,
             smtplib.SMTPException,
             OSError,
             RuntimeError,
             ValueError,
         ) as exc:
+            cache.delete(cache_key)
             logger.warning("Email test submission failed (%s).", type(exc).__name__)
-            messages.error(request, _provider_error(exc))
+            messages.error(request, _smtp_error(exc))
         else:
             messages.success(
                 request,
-                "Email accepted by the configured provider. Check the configured test inbox "
-                "and spam folder; acceptance does not guarantee delivery.",
+                "SMTP server accepted the email. Check the configured test inbox and spam folder; "
+                "acceptance does not guarantee inbox delivery.",
             )
 
     return render(request, "work/email_test.html", {"form": form})
