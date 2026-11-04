@@ -17,7 +17,7 @@ def settle_payment(appointment_id, payment_id):
     if a.payment_status == 'refunded':
         return
     # A verified payment event, not session completion, creates the earning.
-    commission = (a.fee * Decimal('.10')).quantize(Decimal('.01'))
+    commission = (a.fee * a.commission_percent / Decimal(100)).quantize(Decimal('.01'))
     net = a.fee - commission
     entry, created = TherapyLedger.objects.get_or_create(event_key=f'appointment:{a.pk}:earning', defaults={
         'therapist':a.therapist, 'appointment':a, 'amount':net, 'kind':'earning'})

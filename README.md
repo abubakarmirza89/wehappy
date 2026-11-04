@@ -4,7 +4,7 @@ Hearteli is a private check-in and consent based support app. This branch combin
 
 ## Local backend
 
-Use Python 3.11 or later and install `requirements.txt` in a virtual environment. Configure `.env` with a unique `DJANGO_SECRET_KEY`, `DJANGO_ADMIN_URL=admin/`, `DJANGO_DEBUG=True`, and `DB_ENGINE=sqlite` for local development. Transactional email uses SMTP; configure `EMAIL_HOST`, `EMAIL_PORT`, TLS/SSL, credentials, and `DEFAULT_FROM_EMAIL`. Stripe is optional until billing is enabled; configure `STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` for test-mode billing. Run `python manage.py migrate` then `python manage.py runserver`. The API is at `/api/`, the workplace console at `/work/`, and API schema at `/api/docs/`.
+Use Python 3.11 or later and install `requirements.txt` in a virtual environment. Configure `.env` with a unique `DJANGO_SECRET_KEY`, `DJANGO_ADMIN_URL=admin/`, `DJANGO_DEBUG=True`, and `DB_ENGINE=sqlite` for local development. Transactional email uses SMTP; configure `EMAIL_HOST`, `EMAIL_PORT`, TLS/SSL, credentials, and `DEFAULT_FROM_EMAIL`. Stripe is used for individual therapist appointment checkout; configure `STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` only when enabling those payments. Organisation subscriptions are activated and renewed manually by Hearteli administrators; the workplace console does not start online checkout or recurring charges. Run `python manage.py migrate` then `python manage.py runserver`. The API is at `/api/`, the workplace console at `/work/`, and API schema at `/api/docs/`.
 
 The public test page at `/test=email` sends only to the fixed `EMAIL_TEST_RECIPIENT` configured on the server; it does not let visitors choose arbitrary recipients.
 
@@ -30,6 +30,6 @@ See [the 43-screen implementation audit](docs/implementation-audit.md) for code 
 
 ## Therapist practice and business billing update
 
-See [the practice/billing handoff](docs/practice-and-business-billing.md). The new branch connects therapist application/review, mobile/web practice navigation, private appointment chat, verified 10% commission/90% net earnings, reserved withdrawal balances, and a multi-page business console with Stripe subscription Checkout/Portal and server-side paid-access/seat checks. Apply all migrations before enabling these pages.
+See [the current monetisation and marketplace handoff](docs/monetisation-marketplace-v1.1-v1.2.md) for the supplied November requirements, migration sequence, feature inventory and outstanding release checks. Defaults are 15% platform-acquired / 5% therapist-referred commission, administrator-approved session options, separate credential/activity/sponsorship state, manually managed organisation subscriptions and first-party sponsored placements. Individual accounts remain free.
 
-80 backend tests pass on this revision. The changed Flutter screens have no analyzer errors; package-wide analysis still reports legacy issues, and native Flutter tests/builds remain pending. Configure approved Stripe prices, credentials, webhooks and payout operations, then complete test-mode billing before using live payments. No real charge or payout was performed.
+Backend regressions and Dart parser/format checks are documented in the handoff. Native builds, staging financial integration and policy approval remain release work.

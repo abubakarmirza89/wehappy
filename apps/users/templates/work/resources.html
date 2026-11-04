@@ -1,0 +1,5 @@
+{% extends 'work/business_layout.html' %}
+{% block workspace_content %}
+<section class="panel"><h2>Support resources</h2>{% for r in resources %}<article class="resource"><div><a href="{{ r.url }}" rel="noopener noreferrer" target="_blank">{{ r.title }}</a><p>{{ r.description }}</p></div>{% if is_owner %}<form method="post" action="{% url 'hearteli-work-resource-remove' workspace.pk r.pk %}">{% csrf_token %}<button class="secondary">Remove</button></form>{% endif %}</article>{% empty %}<p>No resources published yet.</p>{% endfor %}{% if is_owner %}<form method="post" action="{% url 'hearteli-work-resource-add' workspace.pk %}">{% csrf_token %}<label>Title<input name="title" maxlength="120" required></label><label>HTTPS link<input name="url" type="url" required></label><label>Description<input name="description" maxlength="250"></label><button>Publish resource</button></form>{% endif %}</section>
+
+{% endblock %}

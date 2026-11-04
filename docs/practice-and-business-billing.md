@@ -1,3 +1,7 @@
+# Historical implementation notes — superseded
+
+Current rules and release status are in [the monetisation and marketplace handoff](monetisation-marketplace-v1.1-v1.2.md). The flat 10% fee and automated organisation checkout described below no longer apply. These notes describe the earlier baseline only.
+
 # Therapist practice and business billing
 
 Implemented on `feature/therapist-business-billing`, 4 November 2026.
@@ -46,3 +50,18 @@ Signed subscription/invoice webhooks retrieve current provider state before chan
 80 backend tests passed after integrating with current `main`. Desktop and 390px mobile browser checks for practice, business overview, members and billing passed without horizontal page overflow. They cover role approval, private chat, fee/ledger idempotency, withdrawal reservation, signature rejection, subscription state, seat gating, existing consent boundaries and account recovery. Changed Flutter screens have no analyzer errors, but package-wide analysis still reports legacy issues. Actual Flutter tests/build, iOS/Android device runs and native notification/payment-browser return behavior remain unverified.
 
 Desktop/mobile browser checks use synthetic accounts and local pages. Live Stripe checkout, bank transfers, native app builds, tax handling and payment-provider disputes have not been exercised. No real charges or payouts were made. This branch adds the connected workflows; it does not certify every item from the earlier 43-screen product specification as complete.
+
+
+## Completed-session ratings and reviews
+
+Clients can submit a 1–5 rating and optional public review after an appointment is marked COMPLETED. The server checks appointment ownership, the matching therapist, completion, and one review per appointment under a row lock; the existing one-to-one appointment constraint also prevents duplicate storage. Mobile and web session screens expose the review form only to the client. Provider profiles show average rating, count and client review text, without publishing client names, email addresses, appointment reasons or private check-in data. Reviews are public to signed-in members and the form warns clients not to include personal health details.
+
+Five targeted review tests passed (eligibility, duplicates, ownership, completion, rating range and public payload privacy). Dart formatting/parser checks passed; native device builds remain unverified.
+
+## Workspace pages and settings navigation
+
+Every sidebar section now uses a separate page template and URL: Overview, Members & roles, Support resources, Insights, Privacy & access, Plans & billing, and Workspace settings. All pages, including billing, retain the same sidebar with one active-page indicator and a section-specific title. Legacy dashboard templates delegate to Overview rather than reintroducing the long all-in-one page.
+
+Settings validates workspace name/description and shows inline errors. Invite-code rotation requires explicit confirmation and does not remove existing memberships. Managers cannot open or submit owner settings. Member/resource mutations redirect back to their respective section; invalid resource/invitation actions show feedback instead of silently returning to Overview. Role selectors preserve the current role.
+
+Seven pages were checked at 1440px desktop and 390px mobile width with no horizontal page overflow. Five added navigation/settings tests cover separate templates, active navigation, settings validation, invitation rotation, owner restrictions and return destinations.

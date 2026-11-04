@@ -208,13 +208,15 @@ class CommunicationTests(TestCase):
 
     def test_appointment_create_conflict_reschedule_cancel_and_emails(self):
         therapist = User.objects.create_user(name='Email Therapist', email='therapist@example.com', password='StrongPass123!', phone_number='789', is_therapist=True)
+        from .billing_helpers import approved_provider
+        option=approved_provider(therapist)
         therapist.therapist_profile.is_available=True
         therapist.therapist_profile.hourly_rate=100
         therapist.therapist_profile.save()
         self.client.force_authenticate(self.member)
         tomorrow = timezone.now().date() + timedelta(days=1)
         path = f'/api/users/create-appointment/{therapist.pk}/'
-        data = {'date':str(tomorrow),'time':'10:00','location':'Online','reason':'Support'}
+        data = {'offering_id':option.pk,'date':str(tomorrow),'time':'10:00','location':'Online','reason':'Support'}
         response = self.client.post(path, data)
         self.assertEqual(response.status_code, 201)
         appointment = Appointment.objects.get(pk=response.data['id'])

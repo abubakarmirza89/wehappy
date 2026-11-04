@@ -288,7 +288,8 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       nudge = true,
       rich = false,
       busy = false,
-      emailNotifications = true;
+      emailNotifications = true,
+      sponsorOptIn = false;
   String timezoneName = "UTC";
   TimeOfDay reminderTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay? start, end;
@@ -320,6 +321,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           nudge = data['nudge_notifications'] != false;
           rich = data['rich_lock_preview'] == true;
           emailNotifications = data['email_notifications'] != false;
+          sponsorOptIn = data['sponsor_opt_in'] == true;
           timezoneName = '${data['timezone_name'] ?? 'UTC'}';
           reminderTime =
               parse(data['reminder_time']) ??
@@ -340,6 +342,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
         body: {
           'reminder_enabled': reminder,
           'email_notifications': emailNotifications,
+          'sponsor_opt_in': sponsorOptIn,
           'timezone_name': timezoneName,
           'reminder_time': format(reminderTime),
           'nudge_notifications': nudge,
@@ -383,6 +386,14 @@ class _NotificationSettingsState extends State<NotificationSettings> {
                 enabled ? 'Device notifications enabled.' : 'Notifications could not be enabled. Check device permission and Firebase setup.',
               );
           },
+        ),
+        SwitchListTile(
+          title: const Text('Optional sponsor acknowledgements'),
+          subtitle: const Text(
+            'Only on eligible ordinary support updates. No targeting based on your moods or private messages.',
+          ),
+          value: sponsorOptIn,
+          onChanged: (v) => setState(() => sponsorOptIn = v),
         ),
         SwitchListTile(
           title: const Text('Email notifications'),

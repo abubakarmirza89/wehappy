@@ -1,5 +1,4 @@
 
-from decimal import Decimal
 from pathlib import Path
 import environ
 
@@ -251,7 +250,7 @@ SPECTACULAR_SETTINGS = {
 STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY", default="")
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
-THERAPIST_COMMISSION_PERCENT = Decimal("10")
+# Commission percentages live in the administrator-controlled MarketplacePolicy.
 
 # Firebase Cloud Messaging is optional in local development. Set these values
 # in the environment to enable server-side push delivery.

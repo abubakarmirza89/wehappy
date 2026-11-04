@@ -20,7 +20,6 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
   late Future<Map<String, dynamic>> _future;
   final _amount = TextEditingController();
   final _payout = TextEditingController();
-  final _rate = TextEditingController();
 
   @override
   void initState() {
@@ -32,7 +31,6 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
   void dispose() {
     _amount.dispose();
     _payout.dispose();
-    _rate.dispose();
     super.dispose();
   }
 
@@ -40,28 +38,7 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
     final data = Map<String, dynamic>.from(
       await widget.apiClient.get('/api/users/therapist/dashboard/'),
     );
-    _rate.text = '${data['hourly_rate'] ?? ''}';
     return data;
-  }
-
-  Future<void> _updateRate() async {
-    final rate = double.tryParse(_rate.text.trim());
-    if (rate == null || rate < 0) {
-      AppToast.error(context, 'Enter a valid hourly fee.');
-      return;
-    }
-    try {
-      await widget.apiClient.patch(
-        '/api/users/therapist/settings/',
-        body: {'hourly_rate': rate},
-      );
-      if (mounted) {
-        AppToast.success(context, 'Hourly fee updated.');
-        setState(() => _future = _load());
-      }
-    } catch (error) {
-      if (mounted) AppToast.error(context, '$error');
-    }
   }
 
   Future<void> _withdraw() async {
@@ -116,7 +93,10 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _metric('Rate', '${data['hourly_rate'] ?? 0}/hr'),
+                  child: _metric(
+                    'Platform commission',
+                    '${data['platform_commission'] ?? 15}%',
+                  ),
                 ),
               ],
             ),
@@ -140,7 +120,7 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
             ),
             const SizedBox(height: 10),
             const Text(
-              '10% platform fee · Your net share is 90% of verified session payments.',
+              'Commission follows the administrator-approved platform/referral rate saved with each booking.',
             ),
             Card(
               color: AppColors.mint,
@@ -205,22 +185,6 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    AppTextField(
-                      controller: _rate,
-                      label: 'Hourly fee',
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: _updateRate,
-                        child: const Text('Update fee'),
-                      ),
-                    ),
-                    const Divider(height: 28),
                     AppTextField(
                       controller: _amount,
                       label: 'Withdrawal amount',

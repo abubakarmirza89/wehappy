@@ -350,6 +350,7 @@ class CircleConnection(models.Model):
 
 
 class EmpathyNudge(models.Model):
+    support_context=models.CharField(max_length=12,default='unknown',choices=[('unknown','Unknown'),('ordinary','Ordinary support'),('safety','Safety pathway')])
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_sent')
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_received')
     check_in = models.ForeignKey(MoodCheckIn, on_delete=models.CASCADE, related_name='hearteli_nudges')
@@ -391,6 +392,7 @@ class HearteliPreferences(models.Model):
     quiet_end = models.TimeField(null=True, blank=True)
     rich_lock_preview = models.BooleanField(default=False)
     email_notifications = models.BooleanField(default=True)
+    sponsor_opt_in = models.BooleanField(default=False)
     timezone_name = models.CharField(max_length=64, default="UTC")
     reminder_time = models.TimeField(default="09:00")
 

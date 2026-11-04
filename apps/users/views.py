@@ -192,7 +192,8 @@ class TherapistListViewSet(ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return User.objects.filter(is_therapist=True, is_active=True)
+        from .marketplace import eligible_profiles
+        return User.objects.filter(pk__in=eligible_profiles().values('user_id'))
     
 class TherapistProfileViewSet(RetrieveAPIView):
     queryset = User.objects.all()
@@ -202,7 +203,8 @@ class TherapistProfileViewSet(RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         try:
             therapist_id = self.kwargs['pk']
-            therapist = self.queryset.get(id=therapist_id, is_therapist=True, is_active=True)
+            from .marketplace import eligible_profiles
+            therapist = self.queryset.get(id=therapist_id, pk__in=eligible_profiles().values('user_id'))
             serializer = self.get_serializer(therapist)
             return Response(serializer.data)
         except User.DoesNotExist:
@@ -243,7 +245,7 @@ class AppointmentViewSet(RetrieveModelMixin, ListModelMixin, DestroyModelMixin, 
             date = serializer.validated_data.get('date', instance.date)
             time = serializer.validated_data.get('time', instance.time)
             if date != instance.date or time != instance.time:
-                validate_appointment_slot(instance.therapist, date, time, exclude=instance.pk)
+                validate_appointment_slot(instance.therapist, date, time, exclude=instance.pk,duration=instance.duration_minutes)
             serializer.save()
 
     @action(detail=True, methods=['post'])
@@ -262,7 +264,7 @@ class AppointmentViewSet(RetrieveModelMixin, ListModelMixin, DestroyModelMixin, 
         return Response({'detail': 'Cancel the appointment to preserve its history.'}, status=405)
 
 
-def validate_appointment_slot(therapist, date, time, exclude=None):
+def validate_appointment_slot(therapist, date, time, exclude=None, duration=60):
     from datetime import datetime, timezone as dt_timezone
     from rest_framework.exceptions import ValidationError
     start = datetime.combine(date, time, tzinfo=dt_timezone.utc)
@@ -275,7 +277,7 @@ def validate_appointment_slot(therapist, date, time, exclude=None):
         occupied = occupied.exclude(pk=exclude)
     for other in occupied:
         other_start=datetime.combine(other.date,other.time,tzinfo=dt_timezone.utc)
-        if abs((other_start-start).total_seconds())<3600:
+        if start<other_start+timezone.timedelta(minutes=other.duration_minutes) and other_start<start+timezone.timedelta(minutes=duration):
             raise ValidationError({'time':'This time overlaps another session. Choose another time.'})
 
 
@@ -291,7 +293,7 @@ class TherapistDashboardView(APIView):
         profile = request.user.therapist_profile
         from .therapy_services import balance
         wallet = balance(request.user)
-        return Response({**wallet, 'platform_fee_percent': 10, 'appointments': TherapistAppointmentSerializer(appointments, many=True).data, 'ledger_total_earned': wallet['total_earned'], 'pending_withdrawals': pending, 'hourly_rate': profile.hourly_rate, 'is_available': profile.is_available})
+        return Response({**wallet, 'platform_commission': __import__('apps.users.models',fromlist=['MarketplacePolicy']).MarketplacePolicy.current().platform_commission, 'referral_commission': __import__('apps.users.models',fromlist=['MarketplacePolicy']).MarketplacePolicy.current().referral_commission, 'appointments': TherapistAppointmentSerializer(appointments, many=True).data, 'ledger_total_earned': wallet['total_earned'], 'pending_withdrawals': pending, 'hourly_rate': profile.hourly_rate, 'is_available': profile.is_available})
 
 
 class TherapistSettingsView(APIView):
@@ -343,20 +345,16 @@ class CreateAppointmentViewSet(CreateAPIView):
         if therapist is None or not hasattr(therapist, 'therapist_profile'):
             from rest_framework.exceptions import NotFound
             raise NotFound('Therapist not found or unavailable.')
-        if not therapist.therapist_profile.is_available:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError('This provider is not accepting new appointments.')
-        fee = therapist.therapist_profile.hourly_rate or Decimal('0')
-        if not fee.is_finite() or fee<=0:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError('This provider has not configured a valid session fee.')
-        commission = (fee * settings.THERAPIST_COMMISSION_PERCENT / Decimal('100')).quantize(Decimal('0.01'))
-        earnings = fee - commission
+        from .marketplace import quote_booking
         from django.db import transaction
         with transaction.atomic():
+            User.objects.select_for_update().get(pk=user.pk)
             User.objects.select_for_update().get(pk=therapist.pk)
-            validate_appointment_slot(therapist, serializer.validated_data['date'], serializer.validated_data['time'])
-            serializer.save(user=user, therapist=therapist, fee=fee, commission=commission, therapist_earnings=earnings)
+            quote=quote_booking(user,therapist,self.request.data.get('offering_id'),self.request.data.get('referral_code'))
+            validate_appointment_slot(therapist,serializer.validated_data['date'],serializer.validated_data['time'],duration=quote['duration_minutes'])
+            appointment=serializer.save(user=user,therapist=therapist,**quote)
+            from .monetisation import attribute_booking
+            attribute_booking(appointment,self.request.data.get('sponsor_event_id'))
 
 
 class FeedbackCreateView(CreateAPIView):
@@ -364,16 +362,9 @@ class FeedbackCreateView(CreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        therapist_id = self.kwargs.get("pk")
-        if str(therapist_id)==str(user.pk):
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError("Choose another provider for your session.")
-        therapist = User.objects.get(pk=therapist_id)
-        appointment_id = self.request.data.get("appointment_id")
-        appointment = Appointment.objects.get(pk=appointment_id)
-
-        serializer.save(user=self.request.user,
-                        therapist=therapist, appointment=appointment)
+        from .reviews import submit_review
+        data=serializer.validated_data
+        serializer.instance=submit_review(self.request.user,self.kwargs['pk'],data['appointment_id'],data['rating'],data.get('comment',''))
 
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):

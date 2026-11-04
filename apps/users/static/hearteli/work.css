@@ -9,3 +9,4 @@
 .kpis,.dashboard-grid,.workspace-list{gap:20px}
 .console-main>.panel{margin-top:16px}
 @media(max-width:760px){.card,.panel,.kpi{margin:6px}.kpis,.dashboard-grid,.workspace-list{gap:14px}.console-main>.panel{margin-top:12px}}
+.workspace-message{background:#e8f0fe;border-radius:12px;padding:14px 18px}.panel .errorlist{color:#a42323;padding-left:20px}.panel+.panel{margin-top:20px}.sidebar>a[aria-current="page"]{background:#fff0ef;color:var(--coral)}

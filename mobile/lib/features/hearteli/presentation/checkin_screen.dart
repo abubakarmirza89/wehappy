@@ -37,6 +37,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     AppColors.coral,
     AppColors.error,
   ];
+  bool ordinarySupport = false;
   int step = 0, feeling = -1;
   int? checkInId, recipient;
   final tags = <String>{}, preferences = <String>{};
@@ -191,6 +192,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
               ? _preferenceText()
               : '',
           'idempotency_key': retryKey,
+          'support_context': ordinarySupport ? 'ordinary' : 'unknown',
         },
       );
       if (mounted) {
@@ -288,6 +290,18 @@ class _CheckInScreenState extends State<CheckInScreen> {
                   if (step == 3 && patternSuggested)
                     const StatusPanel(
                       message: 'A couple of tough check-ins. Would you like to choose someone for support? Nothing is sent without your review.',
+                    ),
+                  if (step == 4)
+                    CheckboxListTile(
+                      value: ordinarySupport,
+                      onChanged: (v) =>
+                          setState(() => ordinarySupport = v ?? false),
+                      title: const Text(
+                        'This is an ordinary, non-urgent support update',
+                      ),
+                      subtitle: const Text(
+                        'Optional. Safety or unclear contexts are never eligible for sponsorship.',
+                      ),
                     ),
                   if (step == 0) ...[
                     if (hasDraft)

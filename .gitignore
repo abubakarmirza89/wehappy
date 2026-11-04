@@ -149,3 +149,7 @@ db.sqlite3
 !apps/users/migrations/*.py
 !apps/tracking/migrations/
 !apps/tracking/migrations/*.py
+
+# Restricted uploads stay outside public media and source archives.
+private_credentials/
+private_sponsor_assets/

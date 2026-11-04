@@ -190,3 +190,6 @@ class BusinessSubscriptionAdmin(admin.ModelAdmin):
     readonly_fields=['workspace','plan','customer_id','stripe_subscription_id','status','period_end','cancel_at_period_end']
     def has_add_permission(self, request): return False
     def has_delete_permission(self, request, obj=None): return False
+
+# Register the manual monetisation workflow in place of the earlier billing UI.
+from . import commercial_admin

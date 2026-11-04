@@ -317,6 +317,9 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
         return (owned | member).distinct()
 
     def perform_create(self, serializer):
+        if serializer.validated_data.get('workspace_type')=='office' and not self.request.user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Pilot organisations are created by Hearteli administrators.')
         workspace = serializer.save(owner=self.request.user)
         if workspace.workspace_type == Workspace.WORKSPACE_TYPE_OFFICE:
             workspace.subscription_plan = Workspace.SUBSCRIPTION_PLAN_OFFICE_20
@@ -473,6 +476,9 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def join(self, request):
+        if request.data.get('token'):
+            from apps.users.monetisation import RedeemOrganisationInvite
+            return RedeemOrganisationInvite().post(request)
         invite_code = request.data.get('invite_code') or request.query_params.get('invite')
         if not invite_code:
             return Response({'error': 'invite_code is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -481,6 +487,9 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
             workspace = Workspace.objects.get(invite_code__iexact=invite_code)
         except Workspace.DoesNotExist:
             return Response({'error': 'Invalid invite code'}, status=status.HTTP_404_NOT_FOUND)
+
+        if workspace.workspace_type=='office':
+            return Response({'detail':'Use a current administrator-issued organisation invitation.'},status=410)
 
         membership, created = WorkspaceMembership.objects.get_or_create(
             workspace=workspace,
@@ -571,10 +580,14 @@ class WorkspaceResourceViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return WorkspaceResource.objects.filter(
+        queryset=WorkspaceResource.objects.filter(
             Q(workspace__owner=user) | Q(workspace__memberships__user=user,
               workspace__memberships__status=WorkspaceMembership.STATUS_APPROVED)
         ).distinct()
+        if self.request.method in ("GET","HEAD"):
+            now=timezone.now()
+            queryset=queryset.filter(~Q(workspace__workspace_type="office") | Q(workspace__is_active=True,workspace__billing__manual_status="active",workspace__billing__organisation_status="active",workspace__billing__starts_at__lte=now,workspace__billing__period_end__gt=now))
+        return queryset
 
     def perform_create(self, serializer):
         workspace = serializer.validated_data['workspace']

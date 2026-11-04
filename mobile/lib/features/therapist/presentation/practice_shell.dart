@@ -143,7 +143,7 @@ class _TherapistApplicationState extends State<TherapistApplicationScreen> {
       children: [
         const PageIntro(
           title: 'Bring your practice to Hearteli',
-          subtitle: 'Submit your credentials for review. Approval is required before you can offer sessions. Hearteli retains 10% of verified session payments.',
+          subtitle: 'Submit your credentials for review. Approval is required before you can offer sessions. Admin-configured commission applies based on whether clients are platform-acquired or therapist-referred.',
         ),
         if (error != null)
           StatusPanel(message: error!, action: 'Retry', onAction: load),
@@ -199,6 +199,9 @@ class _PracticeProfileState extends State<PracticeProfile> {
   final degrees = TextEditingController(),
       certifications = TextEditingController(),
       rate = TextEditingController();
+  String availabilityStatus = 'active';
+  List<dynamic> offerings = [];
+  final duration = TextEditingController();
   bool available = false, busy = false, loading = true;
   String? error;
   @override
@@ -212,15 +215,22 @@ class _PracticeProfileState extends State<PracticeProfile> {
     degrees.dispose();
     certifications.dispose();
     rate.dispose();
+    duration.dispose();
     super.dispose();
   }
 
+  String referralCode = '';
   Future<void> load() async {
     try {
       final d = await widget.apiClient.get('/api/users/therapist/profile/');
       degrees.text = '${d['degrees'] ?? ''}';
       certifications.text = '${d['certifications'] ?? ''}';
-      rate.text = '${d['hourly_rate'] ?? ''}';
+      referralCode = '${d['referral_code'] ?? ''}';
+      final options = await widget.apiClient.get(
+        '/api/users/therapist/offerings/',
+      );
+      offerings = items(options);
+      availabilityStatus = '${d['availability_status'] ?? 'active'}';
       if (mounted)
         setState(() {
           available = d['is_available'] == true;
@@ -243,8 +253,8 @@ class _PracticeProfileState extends State<PracticeProfile> {
         body: {
           'degrees': degrees.text,
           'certifications': certifications.text,
-          'hourly_rate': rate.text,
-          'is_available': available,
+          'availability_status': availabilityStatus,
+          'is_available': availabilityStatus == 'active',
         },
       );
       if (mounted) showCalmMessage(context, 'Practice profile saved.');
@@ -261,7 +271,7 @@ class _PracticeProfileState extends State<PracticeProfile> {
     children: [
       const PageIntro(
         title: 'Your professional profile',
-        subtitle: 'Set your hourly fee in USD. Your net earning is 90% of a verified session payment.',
+        subtitle: 'Confirm availability and submit session durations and fees for administrator approval.',
       ),
       if (loading) const Center(child: CircularProgressIndicator()),
       if (error != null) StatusPanel(message: error!),
@@ -276,12 +286,81 @@ class _PracticeProfileState extends State<PracticeProfile> {
       TextField(
         controller: rate,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(labelText: 'Hourly fee (USD)'),
+        decoration: const InputDecoration(
+          labelText: 'Proposed session fee (USD)',
+        ),
       ),
-      SwitchListTile(
-        title: const Text('Available for new clients'),
-        value: available,
-        onChanged: (v) => setState(() => available = v),
+      DropdownButtonFormField<String>(
+        value: availabilityStatus,
+        items: const [
+          DropdownMenuItem(
+            value: 'active',
+            child: Text('Active · accepting clients'),
+          ),
+          DropdownMenuItem(
+            value: 'not_accepting',
+            child: Text('Not accepting new clients'),
+          ),
+          DropdownMenuItem(
+            value: 'temporary',
+            child: Text('Temporarily unavailable'),
+          ),
+        ],
+        onChanged: (v) => setState(() => availabilityStatus = v ?? 'active'),
+      ),
+      OutlinedButton(
+        onPressed: () async {
+          try {
+            await widget.apiClient.post(
+              '/api/users/therapist/confirm-activity/',
+              body: {'availability_status': 'active'},
+            );
+            await load();
+            if (mounted)
+              showCalmMessage(
+                context,
+                'Availability confirmed. Visibility also requires valid credentials.',
+              );
+          } catch (e) {
+            if (mounted) showCalmMessage(context, '$e');
+          }
+        },
+        child: const Text("Yes, I'm still accepting clients"),
+      ),
+      if (referralCode.isNotEmpty)
+        SelectableText('Your referral code: $referralCode'),
+      for (final o in offerings)
+        Text(
+          '${o['duration_minutes']} minutes · USD ${o['fee']} · ${o['approved'] == true ? 'Approved' : 'Pending approval'}',
+        ),
+      TextField(
+        controller: duration,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'Session duration in minutes',
+        ),
+      ),
+      OutlinedButton(
+        onPressed: () async {
+          try {
+            await widget.apiClient.post(
+              '/api/users/therapist/offerings/',
+              body: {
+                'duration_minutes': int.tryParse(duration.text),
+                'fee': rate.text,
+              },
+            );
+            await load();
+            if (mounted)
+              showCalmMessage(
+                context,
+                'Session option submitted for approval.',
+              );
+          } catch (e) {
+            if (mounted) showCalmMessage(context, '$e');
+          }
+        },
+        child: const Text('Submit session option for approval'),
       ),
       FilledButton(
         onPressed: busy || loading ? null : save,

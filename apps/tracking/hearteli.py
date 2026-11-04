@@ -130,7 +130,7 @@ class NudgeSerializer(serializers.ModelSerializer):
         model = EmpathyNudge
         fields = ['id', 'sender', 'sender_name', 'recipient', 'recipient_name',
                   'check_in', 'message', 'support_preference', 'idempotency_key',
-                  'delivery_status', 'status', 'created_at', 'responded_at', 'viewer_is_recipient']
+                  'support_context', 'delivery_status', 'status', 'created_at', 'responded_at', 'viewer_is_recipient']
         read_only_fields = ['sender', 'sender_name', 'recipient_name', 'delivery_status',
                             'status', 'created_at', 'responded_at']
 
@@ -281,7 +281,7 @@ class PreferencesSerializer(serializers.ModelSerializer):
     class Meta:
         model = HearteliPreferences
         fields = ['use_contexts', 'reminder_enabled', 'nudge_notifications', 'quiet_start',
-                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'reminder_time']
+                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'reminder_time', 'sponsor_opt_in']
 
     def validate_timezone_name(self, value):
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError

@@ -9,7 +9,7 @@ def require_subscription(workspace, adding_member=False):
     if workspace.workspace_type!='office': return
     sub=BusinessSubscription.objects.filter(workspace=workspace).select_related('plan').first()
     if not sub or not sub.entitled: raise SubscriptionRequired()
-    if adding_member and workspace.memberships.exclude(status='rejected').count()>=sub.plan.member_limit:
+    if adding_member and workspace.memberships.exclude(status='rejected').exclude(user_id=workspace.owner_id).count()>=sub.plan.member_limit:
         raise SubscriptionRequired('Your plan member limit is reached. Upgrade before inviting more members.')
 
 class SubscriptionGateMiddleware:
