@@ -26,8 +26,11 @@ def owner_workspace(request, pk):
 def billing_page(request, pk):
     workspace = owner_workspace(request, pk)
     sub = BusinessSubscription.objects.filter(workspace=workspace).select_related('plan').first()
-    return render(request,'work/billing.html',{'workspace':workspace,'subscription':sub,
-        'plans':BillingPlan.objects.filter(active=True),'billing_ready':stripe_ready()})
+    from apps.tracking.business_web import workspace_context
+    context=workspace_context(workspace,request.user,'billing')
+    context.update(plans=BillingPlan.objects.filter(active=True),billing_ready=stripe_ready())
+    return render(request,'work/billing.html',context)
+
 
 
 @login_required(login_url='/work/login/')

@@ -85,7 +85,7 @@ class PracticeBillingTests(TestCase):
         self.client.force_login(self.member)
         for page in ['members','resources','settings','insights']:
             self.assertEqual(self.client.get(f'/work/{self.workspace.pk}/pages/{page}/').status_code,200)
-        self.assertContains(self.client.get(f'/work/{self.workspace.pk}/billing/'),'Plans & billing')
+        self.assertContains(self.client.get(f'/work/{self.workspace.pk}/billing/'),'Plans &amp; billing')
 
     def test_unsigned_webhook_is_rejected(self):
         self.assertEqual(self.client.post('/api/users/webhook/stripe/',data='{}',content_type='application/json').status_code,400)

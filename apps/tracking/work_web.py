@@ -1,5 +1,6 @@
 """A privacy-constrained, server-rendered workplace console."""
 from django import forms
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
@@ -133,10 +134,13 @@ def invite(request, pk):
         except SubscriptionRequired as exc:
             from django.http import JsonResponse
             return JsonResponse({'detail':str(exc.detail)},status=402)
-        WorkspaceMembership.objects.get_or_create(workspace=workspace, user=member, defaults={
+        membership, created = WorkspaceMembership.objects.get_or_create(workspace=workspace, user=member, defaults={
             'role': WorkspaceMembership.ROLE_EMPLOYEE, 'status': WorkspaceMembership.STATUS_PENDING,
             'invited_by': request.user})
-    return redirect('hearteli-work-dashboard', pk=pk)
+        messages.success(request,'Invitation sent.' if created else 'This member already has a workspace membership.')
+    else:
+        messages.error(request,'Choose another existing Hearteli member using their account email.')
+    return redirect('business-page', pk=pk, section='members')
 
 
 @login_required(login_url='/work/login/')
@@ -150,7 +154,7 @@ def approve(request, pk, member_id):
         membership.status = WorkspaceMembership.STATUS_APPROVED
         membership.joined_at = timezone.now()
         membership.save(update_fields=['status', 'joined_at'])
-    return redirect('hearteli-work-dashboard', pk=pk)
+    return redirect('business-page', pk=pk, section='members')
 
 
 @login_required(login_url='/work/login/')
@@ -169,7 +173,7 @@ def role(request, pk, member_id):
         membership.save(update_fields=['role', 'can_share_mood_with_manager'])
         WorkspaceRoleAudit.objects.create(workspace=workspace, actor=request.user,
             member=membership.user, from_role=previous, to_role=next_role)
-    return redirect('hearteli-work-dashboard', pk=pk)
+    return redirect('business-page', pk=pk, section='members')
 
 
 @login_required(login_url='/work/login/')
@@ -183,7 +187,12 @@ def add_resource(request, pk):
         item = form.save(commit=False)
         item.workspace = workspace
         item.save()
-    return redirect('hearteli-work-dashboard', pk=pk)
+        from django.contrib import messages
+        messages.success(request,'Resource published.')
+    else:
+        from django.contrib import messages
+        messages.error(request,' '.join(str(error) for errors in form.errors.values() for error in errors))
+    return redirect('business-page', pk=pk, section='resources')
 
 
 @login_required(login_url='/work/login/')
@@ -193,4 +202,4 @@ def remove_resource(request, pk, resource_id):
     if workspace is None or workspace.owner_id != request.user.id:
         return HttpResponseForbidden('Owner access required.')
     get_object_or_404(WorkspaceResource, pk=resource_id, workspace=workspace).delete()
-    return redirect('hearteli-work-dashboard', pk=pk)
+    return redirect('business-page', pk=pk, section='resources')

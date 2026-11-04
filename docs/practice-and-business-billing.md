@@ -53,3 +53,11 @@ Desktop/mobile browser checks use synthetic accounts and local pages. Live Strip
 Clients can submit a 1–5 rating and optional public review after an appointment is marked COMPLETED. The server checks appointment ownership, the matching therapist, completion, and one review per appointment under a row lock; the existing one-to-one appointment constraint also prevents duplicate storage. Mobile and web session screens expose the review form only to the client. Provider profiles show average rating, count and client review text, without publishing client names, email addresses, appointment reasons or private check-in data. Reviews are public to signed-in members and the form warns clients not to include personal health details.
 
 Five targeted review tests passed (eligibility, duplicates, ownership, completion, rating range and public payload privacy). Dart formatting/parser checks passed; native device builds remain unverified.
+
+## Workspace pages and settings navigation
+
+Every sidebar section now uses a separate page template and URL: Overview, Members & roles, Support resources, Insights, Privacy & access, Plans & billing, and Workspace settings. All pages, including billing, retain the same sidebar with one active-page indicator and a section-specific title. Legacy dashboard templates delegate to Overview rather than reintroducing the long all-in-one page.
+
+Settings validates workspace name/description and shows inline errors. Invite-code rotation requires explicit confirmation and does not remove existing memberships. Managers cannot open or submit owner settings. Member/resource mutations redirect back to their respective section; invalid resource/invitation actions show feedback instead of silently returning to Overview. Role selectors preserve the current role.
+
+Seven pages were checked at 1440px desktop and 390px mobile width with no horizontal page overflow. Five added navigation/settings tests cover separate templates, active navigation, settings validation, invitation rotation, owner restrictions and return destinations.
