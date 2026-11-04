@@ -36,10 +36,15 @@ class ApplicationView(APIView):
 
 
 class PracticeProfileSerializer(serializers.ModelSerializer):
+    last_login=serializers.DateTimeField(source="user.last_login",read_only=True)
     class Meta:
         from .models import Therapist
         model = Therapist
-        fields = ['degrees','certifications','hourly_rate','is_available']
+        fields = ['last_login','degrees','certifications','is_available','availability_status','referral_code','last_activity_confirmation','last_availability_update','verification_status']
+        read_only_fields=['referral_code','last_activity_confirmation','last_availability_update','verification_status']
+    def validate(self,attrs):
+        if 'hourly_rate' in self.initial_data:raise ValidationError('Submit session durations and fees for administrator approval.')
+        return attrs
     def validate_hourly_rate(self, value):
         if value is None or not value.is_finite() or value <= 0:
             raise ValidationError('Set a positive hourly rate.')
@@ -56,7 +61,7 @@ class PracticeProfileView(APIView):
         if not request.user.is_therapist:
             raise PermissionDenied('Approved therapist account required.')
         serializer = PracticeProfileSerializer(request.user.therapist_profile, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True); serializer.save()
+        serializer.is_valid(raise_exception=True); serializer.save(last_availability_update=__import__('django.utils.timezone',fromlist=['now']).now())
         return Response(serializer.data)
 
 

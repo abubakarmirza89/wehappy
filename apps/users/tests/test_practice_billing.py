@@ -16,11 +16,13 @@ class PracticeBillingTests(TestCase):
         self.api=APIClient();self.api.force_authenticate(self.member)
         self.a=Appointment.objects.create(user=self.member,therapist=self.therapist,date=timezone.now().date()+timedelta(days=1),time='10:00',location='Online',reason='Support',fee=100)
         self.workspace=Workspace.objects.create(name='Business',owner=self.member,workspace_type='office')
+        from .billing_helpers import approved_provider
+        self.offering=approved_provider(self.therapist)
         self.plan=BillingPlan.objects.create(name='Team',stripe_price_id='price_test',monthly_price=20,member_limit=2)
     def test_net_credit_once_and_refund_once(self):
         settle_payment(self.a.pk,'pi_test');settle_payment(self.a.pk,'pi_test')
-        self.assertEqual(balance(self.therapist)['available_balance'],Decimal('90'))
-        self.a.refresh_from_db();self.assertEqual(self.a.commission,Decimal('10'))
+        self.assertEqual(balance(self.therapist)['available_balance'],Decimal('85'))
+        self.a.refresh_from_db();self.assertEqual(self.a.commission,Decimal('15'))
         refund_payment(self.a.pk);refund_payment(self.a.pk)
         self.assertEqual(TherapyLedger.objects.count(),2)
         self.assertEqual(balance(self.therapist)['available_balance'],0)
@@ -30,7 +32,7 @@ class PracticeBillingTests(TestCase):
         self.assertEqual(self.api.post(url,{'amount':'60','payout_account':'bank'}).status_code,201)
         self.assertEqual(self.api.post(url,{'amount':'60','payout_account':'bank'}).status_code,400)
         WithdrawalRequest.objects.update(status='rejected')
-        self.assertEqual(balance(self.therapist)['available_balance'],90)
+        self.assertEqual(balance(self.therapist)['available_balance'],85)
     def test_application_does_not_self_approve(self):
         url='/api/users/therapist/application/'
         payload={'bio':'Professional bio','credentials':'MSc','license_number':'ABC','location':'Karachi','modalities':'Online','status':'approved'}
@@ -52,16 +54,17 @@ class PracticeBillingTests(TestCase):
         self.assertEqual(self.api.patch('/api/users/therapist/profile/',{'hourly_rate':'-5'}).status_code,400)
         self.assertEqual(self.api.patch('/api/users/therapist/profile/',{'is_available':False},format='json').status_code,200)
     def test_subscription_expiry_and_billing_owner_scope(self):
-        sub=BusinessSubscription.objects.create(workspace=self.workspace,plan=self.plan,status='active',period_end=timezone.now()+timedelta(days=1))
+        sub=BusinessSubscription.objects.create(workspace=self.workspace,plan=self.plan,status='active',manual_status='active',period_end=timezone.now()+timedelta(days=1))
         self.assertTrue(sub.entitled)
         sub.period_end=timezone.now()-timedelta(seconds=1);self.assertFalse(sub.entitled)
         self.client.force_login(self.other)
         self.assertEqual(self.client.get(f'/work/{self.workspace.pk}/billing/').status_code,404)
     def test_gated_write_and_seat_limit(self):
+        self.plan.member_limit=1;self.plan.save()
         self.client.force_login(self.member)
         url=f'/work/{self.workspace.pk}/invite/'
         self.assertEqual(self.client.post(url,{'email':self.other.email}).status_code,402)
-        BusinessSubscription.objects.create(workspace=self.workspace,plan=self.plan,status='active',period_end=timezone.now()+timedelta(days=1))
+        BusinessSubscription.objects.create(workspace=self.workspace,plan=self.plan,status='active',manual_status='active',period_end=timezone.now()+timedelta(days=1))
         WorkspaceMembership.objects.create(workspace=self.workspace,user=self.member,role='owner',status='approved')
         self.assertEqual(self.client.post(url,{'email':self.other.email}).status_code,302)
         self.assertEqual(self.client.post(url,{'email':self.therapist.email}).status_code,402)
@@ -77,11 +80,13 @@ class PracticeBillingTests(TestCase):
         self.assertEqual(self.client.post(url,data='{}',content_type='application/json').status_code,200)
         self.client.post(url,data='{}',content_type='application/json')
         self.assertEqual(TherapyLedger.objects.count(),1)
-        self.assertEqual(balance(self.therapist)['available_balance'],90)
+        self.assertEqual(balance(self.therapist)['available_balance'],85)
     def test_dashboard_and_web_pages_render(self):
         self.client.force_login(self.therapist)
         self.assertContains(self.client.get('/practice/'),'Your practice')
         self.assertEqual(self.client.get('/practice/profile/').status_code,200)
+        from .billing_helpers import active_subscription
+        active_subscription(self.workspace)
         self.client.force_login(self.member)
         for page in ['members','resources','settings','insights']:
             self.assertEqual(self.client.get(f'/work/{self.workspace.pk}/pages/{page}/').status_code,200)
@@ -102,7 +107,7 @@ class PracticeBillingTests(TestCase):
         sub.refresh_from_db();self.assertFalse(sub.entitled)
         remote['status']='active';construct.return_value['id']='evt_sub2'
         self.client.post('/api/users/webhook/stripe/',data='{}',content_type='application/json')
-        sub.refresh_from_db();self.assertTrue(sub.entitled)
+        sub.refresh_from_db();self.assertFalse(sub.entitled) # Stripe state must not activate a manual entitlement
 
     def test_admin_approval_enables_role_and_profile(self):
         from apps.users.admin import TherapistApplicationAdmin
@@ -117,9 +122,9 @@ class PracticeBillingTests(TestCase):
         profile=self.therapist.therapist_profile;profile.hourly_rate=100;profile.is_available=True;profile.save()
         self.client.force_login(self.member)
         self.assertEqual(self.client.get('/therapy/').status_code,200)
-        response=self.client.post(f'/therapy/{self.therapist.pk}/',{'date':str(timezone.now().date()+timedelta(days=2)),'time':'12:00','location':'Online','reason':'Support'})
+        response=self.client.post(f'/therapy/{self.therapist.pk}/',{'offering_id':self.offering.pk,'date':str(timezone.now().date()+timedelta(days=2)),'time':'12:00','location':'Online','reason':'Support'})
         self.assertEqual(response.status_code,302)
-        booking=Appointment.objects.exclude(pk=self.a.pk).get();self.assertEqual(booking.commission,10);self.assertEqual(booking.therapist_earnings,90)
+        booking=Appointment.objects.exclude(pk=self.a.pk).get();self.assertEqual(booking.commission,15);self.assertEqual(booking.therapist_earnings,85)
         self.assertEqual(TherapyLedger.objects.count(),0)
         self.api.force_authenticate(self.therapist)
         self.assertEqual(self.api.post(f'/api/users/create-appointment/{self.therapist.pk}/',{'date':str(timezone.now().date()+timedelta(days=3)),'time':'12:00','location':'Online','reason':'Support'}).status_code,400)

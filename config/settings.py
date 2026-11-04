@@ -248,7 +248,8 @@ SPECTACULAR_SETTINGS = {
 STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY")
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
-THERAPIST_COMMISSION_PERCENT = Decimal("10")
+# Commission percentages now live in the administrator-controlled MarketplacePolicy.
+THERAPIST_COMMISSION_PERCENT = Decimal("15")
 
 # Firebase Cloud Messaging is optional in local development. Set these values
 # in the environment to enable server-side push delivery.

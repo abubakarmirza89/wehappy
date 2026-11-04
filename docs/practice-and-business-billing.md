@@ -1,3 +1,7 @@
+# Historical implementation notes — superseded
+
+Current rules and release status are in [the monetisation and marketplace handoff](monetisation-marketplace-v1.1-v1.2.md). The flat 10% fee and automated organisation checkout described below no longer apply. These notes describe the earlier baseline only.
+
 # Therapist practice and business billing
 
 Implemented on `feature/therapist-business-billing`, 4 November 2026.

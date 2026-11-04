@@ -98,6 +98,10 @@ class GratitudeEntryAdmin(admin.ModelAdmin):
 
 @admin.register(Workspace)
 class WorkspaceAdmin(admin.ModelAdmin):
+    def save_model(self,request,obj,form,change):
+        super().save_model(request,obj,form,change)
+        from apps.users.models import CommercialAudit
+        CommercialAudit.objects.create(actor=request.user,object_type="Workspace",object_id=str(obj.pk),action="updated" if change else "created")
     list_display = ("name", "owner", "invite_code", "is_approval_required", "is_active", "created_at")
     list_filter = ("is_approval_required", "is_active")
     search_fields = ("name", "owner__name", "invite_code")

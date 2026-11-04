@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
+import 'sponsor_placement.dart';
 
 class TherapyScreen extends StatefulWidget {
   const TherapyScreen({super.key, required this.apiClient});
@@ -15,7 +16,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
   List<dynamic> professionals = [];
   bool loading = true;
   String? error;
-  String query = '';
+  String query = '', specialty = '', maxFee = '', durationFilter = '';
   @override
   void initState() {
     super.initState();
@@ -24,10 +25,21 @@ class _TherapyScreenState extends State<TherapyScreen> {
 
   Future<void> load() async {
     try {
-      final data = await widget.apiClient.get('/api/users/therapists/');
+      final data = await widget.apiClient.get(
+        '/api/users/marketplace/search/',
+        query: {
+          'q': query,
+          if (specialty.isNotEmpty) 'specialty': specialty,
+          if (maxFee.isNotEmpty) 'max_fee': maxFee,
+          if (durationFilter.isNotEmpty) 'duration': durationFilter,
+        },
+      );
       if (mounted)
         setState(() {
-          professionals = items(data);
+          professionals = [
+            ...items(data['sponsored']),
+            ...items(data['organic']),
+          ];
           loading = false;
           error = null;
         });
@@ -64,6 +76,23 @@ class _TherapyScreenState extends State<TherapyScreen> {
               labelText: 'Search by name',
             ),
           ),
+          TextField(
+            decoration: const InputDecoration(labelText: 'Specialty'),
+            onChanged: (v) => specialty = v,
+          ),
+          TextField(
+            decoration: const InputDecoration(labelText: 'Maximum fee (USD)'),
+            keyboardType: TextInputType.number,
+            onChanged: (v) => maxFee = v,
+          ),
+          TextField(
+            decoration: const InputDecoration(
+              labelText: 'Session duration (minutes)',
+            ),
+            keyboardType: TextInputType.number,
+            onChanged: (v) => durationFilter = v,
+          ),
+          OutlinedButton(onPressed: load, child: const Text('Apply filters')),
           const SizedBox(height: 16),
           if (loading)
             const Center(child: CircularProgressIndicator())
@@ -76,22 +105,59 @@ class _TherapyScreenState extends State<TherapyScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: HearteliCard(
-                  child: LabelRow(
-                    icon: Icons.psychology_outlined,
-                    title: '${raw['name']}',
-                    subtitle: raw['therapist_profile']?['is_available'] == true
-                        ? 'Available · Fee: ${raw['therapist_profile']?['hourly_rate'] ?? 'Ask provider'}'
-                        : 'Availability not confirmed',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TherapistDetail(
+                  child: raw['sponsor'] != null
+                      ? SponsorPlacement(
                           apiClient: widget.apiClient,
-                          therapist: Map<String, dynamic>.from(raw as Map),
+                          payload: Map<String, dynamic>.from(raw['sponsor']),
+                          child: LabelRow(
+                            icon: Icons.psychology_outlined,
+                            title:
+                                '${raw['name']} ${raw['verified'] == true ? '✓ Verified' : ''}',
+                            subtitle:
+                                '${items(raw['offerings']).length} approved session options',
+                            onTap: () async {
+                              try {
+                                await widget.apiClient.post(
+                                  '/api/users/sponsor-events/',
+                                  body: {
+                                    'event_id': raw['sponsor']['event_id'],
+                                    'event_type': 'click',
+                                  },
+                                );
+                              } catch (_) {}
+                              if (!context.mounted) return;
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => TherapistDetail(
+                                    apiClient: widget.apiClient,
+                                    therapist: Map<String, dynamic>.from(
+                                      raw as Map,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                      : LabelRow(
+                          icon: Icons.psychology_outlined,
+                          title:
+                              '${raw['name']} ${raw['verified'] == true ? '✓ Verified' : ''}',
+                          subtitle:
+                              '${items(raw['offerings']).length} approved session options',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TherapistDetail(
+                                apiClient: widget.apiClient,
+                                therapist: Map<String, dynamic>.from(
+                                  raw as Map,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
                 ),
               ),
           const SizedBox(height: 12),
@@ -152,7 +218,7 @@ class TherapistDetail extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            '${therapist['name']}',
+            '${therapist['name']} ${therapist['verified'] == true ? '✓ Verified' : '· Not verified'}',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineMedium,
           ),
@@ -173,7 +239,7 @@ class TherapistDetail extends StatelessWidget {
                 ),
                 const SizedBox(height: 7),
                 Text(
-                  'Fee: ${profile['hourly_rate'] ?? 'Confirm with provider'}',
+                  '${items(therapist['offerings']).length} approved session duration and fee options',
                 ),
                 const SizedBox(height: 7),
                 Text(
@@ -234,16 +300,42 @@ class _BookTherapistState extends State<BookTherapist> {
   DateTime? date;
   TimeOfDay? time;
   String format = 'Online';
+  int? offeringId;
+  Map<String, dynamic>? get selectedOffering {
+    for (final o in items(widget.therapist['offerings'])) {
+      if (o['id'] == offeringId) return Map<String, dynamic>.from(o);
+    }
+    return null;
+  }
+
   bool busy = false;
   final reason = TextEditingController();
+  final referral = TextEditingController();
+  @override
+  void initState() {
+    super.initState();
+    final sponsor = widget.therapist['sponsor'];
+    if (sponsor != null)
+      widget.apiClient
+          .post(
+            '/api/users/sponsor-events/',
+            body: {
+              'event_id': sponsor['event_id'],
+              'event_type': 'booking_start',
+            },
+          )
+          .catchError((_) => <String, dynamic>{});
+  }
+
   @override
   void dispose() {
     reason.dispose();
+    referral.dispose();
     super.dispose();
   }
 
   Future<void> submit() async {
-    if (date == null || time == null) return;
+    if (date == null || time == null || selectedOffering == null) return;
     final utcStart = DateTime(
       date!.year,
       date!.month,
@@ -256,7 +348,7 @@ class _BookTherapistState extends State<BookTherapist> {
       builder: (dialog) => AlertDialog(
         title: const Text('Review session request'),
         content: Text(
-          '${widget.therapist['name']}\n${date!.toIso8601String().substring(0, 10)} · ${time!.format(context)} (${DateTime.now().timeZoneName})\n$format\nFee: ${widget.therapist['therapist_profile']?['hourly_rate'] ?? 'Confirm with provider'}\n\nOne session is 60 minutes. This request does not share your private check-ins.',
+          '${widget.therapist['name']}\n${date!.toIso8601String().substring(0, 10)} · ${time!.format(context)} (${DateTime.now().timeZoneName})\n$format\nFee: USD ${selectedOffering?['fee']} · ${selectedOffering?['duration_minutes']} minutes\n\nThis request does not share your private check-ins.',
         ),
         actions: [
           TextButton(
@@ -279,6 +371,11 @@ class _BookTherapistState extends State<BookTherapist> {
           'date': utcStart.toIso8601String().substring(0, 10),
           'time':
               '${utcStart.hour.toString().padLeft(2, '0')}:${utcStart.minute.toString().padLeft(2, '0')}',
+          'offering_id': offeringId,
+          if (referral.text.trim().isNotEmpty)
+            'referral_code': referral.text.trim(),
+          if (widget.therapist['sponsor'] != null)
+            'sponsor_event_id': widget.therapist['sponsor']['event_id'],
           'location': format,
           'reason': reason.text.trim().isEmpty
               ? 'Support session'
@@ -308,6 +405,23 @@ class _BookTherapistState extends State<BookTherapist> {
         PageIntro(
           title: 'Book ${widget.therapist['name']}',
           subtitle: 'Choose a time and review details before submitting.',
+        ),
+        DropdownButtonFormField<int>(
+          value: offeringId,
+          decoration: const InputDecoration(
+            labelText: 'Approved session & fee',
+          ),
+          items: items(widget.therapist['offerings'])
+              .map(
+                (o) => DropdownMenuItem<int>(
+                  value: o['id'] as int,
+                  child: Text(
+                    '${o['duration_minutes']} minutes · USD ${o['fee']}',
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: (v) => setState(() => offeringId = v),
         ),
         const SizedBox(height: 18),
         OutlinedButton(
@@ -361,6 +475,12 @@ class _BookTherapistState extends State<BookTherapist> {
           ),
         ),
         const SizedBox(height: 14),
+        TextField(
+          controller: referral,
+          decoration: const InputDecoration(
+            labelText: 'Therapist referral code (optional)',
+          ),
+        ),
         const StatusPanel(
           message: 'Booking does not grant access to your check-ins. You can share selected context separately.',
         ),
@@ -548,6 +668,46 @@ class TherapistReviewsScreen extends StatelessWidget {
                   children: [
                     Text('${r['rating']} / 5 · Completed session'),
                     Text('${r['comment']}'),
+                    TextButton(
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialog) => AlertDialog(
+                            title: const Text('Report this review?'),
+                            content: const Text(
+                              'Send this review to the moderation team for assessment.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialog, false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialog, true),
+                                child: const Text('Report'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true) return;
+                        try {
+                          await apiClient.post(
+                            '/api/users/reviews/${r['id']}/report/',
+                            body: {
+                              'reason': 'Client requested moderation review',
+                            },
+                          );
+                          if (context.mounted)
+                            showCalmMessage(
+                              context,
+                              'Report sent for moderation.',
+                            );
+                        } catch (e) {
+                          if (context.mounted) showCalmMessage(context, '$e');
+                        }
+                      },
+                      child: const Text('Report review'),
+                    ),
                   ],
                 ),
               ),

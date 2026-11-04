@@ -36,49 +36,17 @@ def billing_page(request, pk):
 @login_required(login_url='/work/login/')
 @require_POST
 def checkout(request, pk):
-    workspace = owner_workspace(request, pk)
-    plan = get_object_or_404(BillingPlan, pk=request.POST.get('plan'), active=True)
-    if not stripe_ready():
-        messages.error(request,'Billing is not configured yet. Please contact the workspace administrator.')
-        return redirect('business-billing',pk=pk)
-    with transaction.atomic():
-        Workspace.objects.select_for_update().get(pk=pk)
-        sub = BusinessSubscription.objects.filter(workspace=workspace).first()
-        if sub and sub.stripe_subscription_id and sub.status not in ('canceled','incomplete_expired'):
-            messages.info(request,'Manage your existing subscription in the billing portal.')
-            return redirect('business-billing',pk=pk)
-        if sub and sub.checkout_session_id:
-            existing=stripe.checkout.Session.retrieve(sub.checkout_session_id,api_key=settings.STRIPE_SECRET_KEY)
-            if existing.status=='open': return redirect(existing.url)
-        customer = stripe.Customer.retrieve(sub.customer_id,api_key=settings.STRIPE_SECRET_KEY) if sub and sub.customer_id else stripe.Customer.create(email=request.user.email,metadata={'workspace_id':str(pk)},idempotency_key=f'hearteli-workspace-customer-{pk}',api_key=settings.STRIPE_SECRET_KEY)
-        if not sub:
-            sub=BusinessSubscription.objects.create(workspace=workspace,plan=plan,customer_id=customer.id)
-        else:
-            sub.plan=plan;sub.customer_id=customer.id;sub.save()
-        price=stripe.Price.retrieve(plan.stripe_price_id,api_key=settings.STRIPE_SECRET_KEY)
-        if price.currency!=plan.currency or price.unit_amount!=int(plan.monthly_price*100) or price.recurring.interval!='month':
-            messages.error(request,'The selected plan needs administrator configuration.')
-            return redirect('business-billing',pk=pk)
-        session=stripe.checkout.Session.create(mode='subscription',customer=customer.id,
-            line_items=[{'price':plan.stripe_price_id,'quantity':1}],
-            client_reference_id=str(pk),subscription_data={'metadata':{'workspace_id':str(pk)}},
-            metadata={'workspace_id':str(pk)},success_url=settings.HEARTELI_PUBLIC_URL+f'/work/{pk}/billing/',
-            cancel_url=settings.HEARTELI_PUBLIC_URL+f'/work/{pk}/billing/',idempotency_key=f'hearteli-subscription-{pk}-{plan.pk}-{sub.checkout_session_id or "first"}',api_key=settings.STRIPE_SECRET_KEY)
-        sub.checkout_session_id=session.id;sub.save(update_fields=['checkout_session_id'])
-    return redirect(session.url)
+    owner_workspace(request,pk)
+    return HttpResponse('Organisation billing is managed manually by Hearteli administrators.',status=410)
+
 
 
 @login_required(login_url='/work/login/')
 @require_POST
 def portal(request, pk):
-    workspace=owner_workspace(request,pk)
-    sub=get_object_or_404(BusinessSubscription,workspace=workspace)
-    if not stripe_ready() or not sub.customer_id:
-        messages.error(request,'Billing is not configured yet.')
-        return redirect('business-billing',pk=pk)
-    session=stripe.billing_portal.Session.create(customer=sub.customer_id,
-        return_url=settings.HEARTELI_PUBLIC_URL+f'/work/{pk}/billing/',api_key=settings.STRIPE_SECRET_KEY)
-    return redirect(session.url)
+    owner_workspace(request,pk)
+    return HttpResponse('Invoices and organisation subscriptions are managed manually.',status=410)
+
 
 
 def update_subscription(remote):

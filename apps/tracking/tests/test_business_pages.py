@@ -34,7 +34,8 @@ class BusinessPageTests(TestCase):
         self.client.post(self.url('settings'),{'action':'rotate_invite'})
         self.workspace.refresh_from_db();self.assertEqual(old,self.workspace.invite_code)
         self.assertRedirects(self.client.post(self.url('settings'),{'action':'rotate_invite','confirm_rotate':'on'}),self.url('settings'))
-        self.workspace.refresh_from_db();self.assertNotEqual(old,self.workspace.invite_code)
+        self.workspace.refresh_from_db();self.assertEqual(old,self.workspace.invite_code)
+        self.assertEqual(self.workspace.commercial_invitations.count(),1)
         self.assertEqual(self.workspace.memberships.count(),1)
     def test_manager_settings_and_outside_workspace_blocked(self):
         self.client.force_login(self.manager)

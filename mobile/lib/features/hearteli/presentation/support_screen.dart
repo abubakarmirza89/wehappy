@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
+import 'sponsor_placement.dart';
 import 'nudge_conversation_screen.dart';
 
 class SupportInboxScreen extends StatefulWidget {
@@ -99,6 +100,7 @@ class NudgeDetail extends StatefulWidget {
 
 class _NudgeDetailState extends State<NudgeDetail> {
   Map<String, dynamic>? nudge;
+  Map<String, dynamic>? sponsor;
   String? error;
   bool busy = false;
   @override
@@ -117,6 +119,15 @@ class _NudgeDetailState extends State<NudgeDetail> {
           nudge = Map<String, dynamic>.from(data as Map);
           error = null;
         });
+      if (nudge?['viewer_is_recipient'] == true) {
+        try {
+          final ad = await widget.apiClient.get(
+            '/api/users/nudges/${widget.id}/sponsor/',
+          );
+          if (mounted && ad is Map)
+            setState(() => sponsor = Map<String, dynamic>.from(ad));
+        } catch (_) {}
+      }
     } catch (e) {
       if (mounted)
         setState(() => error = 'This update is no longer available.');
@@ -230,6 +241,8 @@ class _NudgeDetailState extends State<NudgeDetail> {
               message:
                   'Your response: ${nudge!['status'] == 'acknowledged' ? 'I’ll check in' : 'I can’t right now'}',
             ),
+          if (sponsor != null)
+            SponsorPlacement(apiClient: widget.apiClient, payload: sponsor!),
           if (nudge!['viewer_is_recipient'] != true) ...[
             StatusPanel(
               message:
@@ -270,11 +283,18 @@ class _NudgeDetailState extends State<NudgeDetail> {
             ),
           const SizedBox(height: 12),
           FilledButton.icon(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => NudgeConversationScreen(apiClient: widget.apiClient,
-                nudgeId: widget.id, otherName: nudge!['viewer_is_recipient'] == true
-                  ? '${nudge!['sender_name']}' : '${nudge!['recipient_name']}'),
-            )),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NudgeConversationScreen(
+                  apiClient: widget.apiClient,
+                  nudgeId: widget.id,
+                  otherName: nudge!['viewer_is_recipient'] == true
+                      ? '${nudge!['sender_name']}'
+                      : '${nudge!['recipient_name']}',
+                ),
+              ),
+            ),
             icon: const Icon(Icons.chat_bubble_outline),
             label: const Text('Open support conversation'),
           ),

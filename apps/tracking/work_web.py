@@ -92,6 +92,8 @@ def index(request):
 @login_required(login_url='/work/login/')
 @require_POST
 def create_workspace(request):
+    if not request.user.is_staff:
+        return HttpResponseForbidden('Pilot organisations are created by Hearteli administrators.')
     name = request.POST.get('name', '').strip()
     if not 2 <= len(name) <= 120:
         return HttpResponseForbidden('Provide a workspace name of 2–120 characters.')

@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.shortcuts import render,redirect,get_object_or_404
 from django.contrib import messages
 from django.views.decorators.http import require_POST
+from django.utils import timezone
 from .models import TherapistApplication,Therapist,Appointment,AppointmentMessage,WithdrawalRequest,User
 from .therapy_services import balance
 
@@ -18,11 +19,7 @@ class ApplicationForm(forms.ModelForm):
 class ProfileForm(forms.ModelForm):
     class Meta:
         model=Therapist
-        fields=['degrees','certifications','hourly_rate','is_available']
-    def clean_hourly_rate(self):
-        value=self.cleaned_data['hourly_rate']
-        if value is None or value<=0: raise forms.ValidationError('Enter a positive hourly rate.')
-        return value
+        fields=['degrees','certifications','availability_status']
 
 @login_required(login_url='/work/login/')
 def apply(request):
@@ -48,9 +45,26 @@ def dashboard(request):
 @login_required(login_url='/work/login/')
 def profile(request):
     if not request.user.is_therapist: return redirect('practice-apply')
-    form=ProfileForm(request.POST or None,instance=request.user.therapist_profile)
-    if request.method=='POST' and form.is_valid(): form.save();messages.success(request,'Practice profile saved.');return redirect('practice-dashboard')
-    return render(request,'practice/profile.html',{'form':form})
+    from .marketplace import OfferingSerializer
+    from .models import SessionOffering
+    p=request.user.therapist_profile
+    action=request.POST.get('action','profile')
+    form=ProfileForm(request.POST if request.method=='POST' and action=='profile' else None,instance=p)
+    if request.method=='POST':
+        if action=='confirm':
+            p.last_activity_confirmation=timezone.now();p.last_availability_update=timezone.now();p.availability_status='active';p.is_available=True;p.save()
+            messages.success(request,'Availability confirmed. Search visibility also requires valid credentials and no account restrictions.')
+            return redirect('practice-profile')
+        if action=='offering':
+            offering=OfferingSerializer(data=request.POST)
+            if offering.is_valid():offering.save(therapist=p,approved=False);messages.success(request,'Session duration and fee submitted for administrator approval.')
+            else:messages.error(request,str(offering.errors))
+            return redirect('practice-profile')
+        if action=='profile' and form.is_valid():
+            p=form.save(commit=False);p.last_availability_update=timezone.now();p.is_available=p.availability_status=='active';p.save()
+            messages.success(request,'Practice profile saved.');return redirect('practice-profile')
+    return render(request,'practice/profile.html',{'form':form,'provider':p,'offerings':p.session_offerings.all()})
+
 
 @login_required(login_url='/work/login/')
 @require_POST
@@ -106,6 +120,7 @@ class BookingForm(forms.Form):
     time=forms.TimeField(widget=forms.TimeInput(attrs={'type':'time'}))
     location=forms.ChoiceField(choices=[('Online','Online'),('In person','In person')])
     reason=forms.CharField(max_length=200,required=False)
+    referral_code=forms.CharField(max_length=64,required=False,label='Therapist referral code (optional)')
 
 @login_required(login_url='/work/login/')
 def directory(request):
@@ -120,22 +135,37 @@ def provider(request,pk):
     from .views import validate_appointment_slot
     from rest_framework.exceptions import ValidationError
     therapist=get_object_or_404(Therapist,user_id=pk,user__is_active=True,user__is_therapist=True)
+    from .marketplace import eligible_profiles,quote_booking,public_reviews
+    if not eligible_profiles().filter(pk=therapist.pk).exists():
+        from django.http import Http404
+        raise Http404()
+    if request.method=='POST' and request.POST.get('action')=='report_review':
+        from .models import ReviewReport
+        review=get_object_or_404(public_reviews(therapist.user_id),pk=request.POST.get('review_id'))
+        ReviewReport.objects.get_or_create(review=review,reporter=request.user,defaults={'reason':'Client requested moderation review'})
+        messages.success(request,'Report sent for moderation.')
+        return redirect('therapy-provider',pk=pk)
     form=BookingForm(request.POST or None)
+    form.fields['offering_id']=forms.ModelChoiceField(queryset=therapist.session_offerings.filter(approved=True,active=True),label='Approved session duration and fee')
     if request.method=='POST' and form.is_valid():
         try:
             with transaction.atomic():
                 User.objects.select_for_update().get(pk=pk)
                 therapist.refresh_from_db()
                 if request.user.pk==pk: raise ValidationError('Choose another provider.')
-                if not therapist.is_available or not therapist.hourly_rate or therapist.hourly_rate<=0: raise ValidationError('This provider is not accepting bookings.')
+                if not therapist.searchable: raise ValidationError('This provider is not accepting bookings.')
                 data=form.cleaned_data
-                validate_appointment_slot(therapist.user,data['date'],data['time'])
-                fee=therapist.hourly_rate;commission=(fee*Decimal('.10')).quantize(Decimal('.01'))
-                a=Appointment.objects.create(user=request.user,therapist=therapist.user,fee=fee,commission=commission,therapist_earnings=fee-commission,**data)
+                offering=data.pop('offering_id')
+                referral=data.pop('referral_code',None) or request.GET.get('referral_code')
+                quote=quote_booking(request.user,therapist.user,offering.pk,referral)
+                validate_appointment_slot(therapist.user,data['date'],data['time'],duration=quote['duration_minutes'])
+                a=Appointment.objects.create(user=request.user,therapist=therapist.user,**quote,**data)
+                from .monetisation import attribute_booking
+                attribute_booking(a,request.GET.get('sponsor_event_id'))
             return redirect('practice-appointment',pk=a.pk)
         except ValidationError as exc: form.add_error(None,str(exc.detail))
     from django.db.models import Avg
-    reviews=therapist.user.feedback_therapist.all()
+    reviews=public_reviews(therapist.user_id)
     return render(request,'practice/provider.html',{'provider':therapist,'form':form,'reviews':reviews,'average_rating':reviews.aggregate(value=Avg('rating'))['value'],'review_count':reviews.count()})
 
 

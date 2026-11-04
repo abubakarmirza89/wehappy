@@ -28,6 +28,6 @@ See [the 43-screen implementation audit](docs/implementation-audit.md) for code 
 
 ## Therapist practice and business billing update
 
-See [the practice/billing handoff](docs/practice-and-business-billing.md). The new branch connects therapist application/review, mobile/web practice navigation, private appointment chat, verified 10% commission/90% net earnings, reserved withdrawal balances, and a multi-page business console with Stripe subscription Checkout/Portal and server-side paid-access/seat checks. Apply all migrations before enabling these pages.
+See [the current monetisation and marketplace handoff](docs/monetisation-marketplace-v1.1-v1.2.md) for the supplied November requirements, migration sequence, feature inventory and outstanding release checks. Defaults are 15% platform-acquired / 5% therapist-referred commission, administrator-approved session options, separate credential/activity/sponsorship state, manually managed organisation subscriptions and first-party sponsored placements. Individual accounts remain free.
 
-67 backend tests pass on this revision. Changed Dart files passed parser/format checks; Flutter package analysis and native builds remain pending. Configure approved Stripe prices, credentials, webhooks and payout operations, then complete test-mode billing before using live payments. No real charge or payout was performed.
+Backend regressions and Dart parser/format checks are documented in the handoff. Native builds, staging financial integration and policy approval remain release work.

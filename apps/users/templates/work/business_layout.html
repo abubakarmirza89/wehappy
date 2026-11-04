@@ -11,7 +11,7 @@
   <div class="console-main">
     {% for message in messages %}<p class="workspace-message" role="status">{{ message }}</p>{% endfor %}
     <div class="console-head"><div><span class="eyebrow">Hearteli for Work</span><h1>{{ page_title }}</h1><p class="muted">{{ workspace.name }}{% if workspace.description %} · {{ workspace.description }}{% endif %}</p></div><span class="pill">{% if is_owner %}Owner{% else %}Manager{% endif %}</span></div>
-    {% if not subscription.entitled and section != 'billing' %}<section class="privacy-strip"><div><strong>Activate your workspace plan</strong><p>Member expansion and resource publishing need an active subscription.</p>{% if is_owner %}<a href="{% url 'business-billing' workspace.pk %}">Choose a plan →</a>{% endif %}</div></section>{% endif %}
+    {% if not subscription.entitled and section != 'billing' %}<section class="privacy-strip"><div><strong>Activate your workspace plan</strong><p>Paid organisation features need active organisation access. Personal accounts stay available.</p>{% if is_owner %}<a href="{% url 'business-billing' workspace.pk %}">View manual billing →</a>{% endif %}</div></section>{% endif %}
     {% block workspace_content %}{% endblock %}
   </div>
 </div>

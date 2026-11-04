@@ -33,4 +33,11 @@ def nudge_detail(request, pk):
             return redirect('hearteli-nudge-detail', pk=pk)
     if request.user.pk == nudge.recipient_id:
         EmpathyNudge.objects.filter(pk=pk).update(delivery_status='opened')
-    return render(request, 'work/nudge_detail.html', {'nudge': nudge})
+    sponsor=None
+    if request.user.pk==nudge.recipient_id:
+        try:
+            from .monetisation import NudgeSponsorView
+            sponsor=NudgeSponsorView().get(request,pk).data
+        except Exception:
+            sponsor=None
+    return render(request, 'work/nudge_detail.html', {'nudge': nudge,'sponsor':sponsor})

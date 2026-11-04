@@ -116,7 +116,10 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _metric('Rate', '${data['hourly_rate'] ?? 0}/hr'),
+                  child: _metric(
+                    'Platform commission',
+                    '${data['platform_commission'] ?? 15}%',
+                  ),
                 ),
               ],
             ),
@@ -140,7 +143,7 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
             ),
             const SizedBox(height: 10),
             const Text(
-              '10% platform fee · Your net share is 90% of verified session payments.',
+              'Commission follows the administrator-approved platform/referral rate saved with each booking.',
             ),
             Card(
               color: AppColors.mint,
@@ -205,22 +208,6 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    AppTextField(
-                      controller: _rate,
-                      label: 'Hourly fee',
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: _updateRate,
-                        child: const Text('Update fee'),
-                      ),
-                    ),
-                    const Divider(height: 28),
                     AppTextField(
                       controller: _amount,
                       label: 'Withdrawal amount',

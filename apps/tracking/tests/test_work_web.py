@@ -43,6 +43,11 @@ class WorkConsoleTests(TestCase):
             'confirm_password': 'StrongerPass123!'})
         self.assertRedirects(response, '/work/')
         response = self.client.post('/work/new/', {'name': 'New Team'})
+        self.assertEqual(response.status_code,403)
+        self.client.session.flush()
+        new_owner = get_user_model().objects.get(email='new-owner@hearteli.test');new_owner.is_staff=True;new_owner.save()
+        self.client.force_login(new_owner)
+        response=self.client.post('/work/new/',{'name':'New Team'})
         workspace = Workspace.objects.get(name='New Team')
         self.assertRedirects(response, f'/work/{workspace.pk}/')
         self.assertTrue(WorkspaceMembership.objects.filter(workspace=workspace,
