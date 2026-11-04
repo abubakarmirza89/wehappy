@@ -24,7 +24,7 @@ class ProfileForm(forms.ModelForm):
         if value is None or value<=0: raise forms.ValidationError('Enter a positive hourly rate.')
         return value
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 def apply(request):
     app=TherapistApplication.objects.filter(user=request.user).first()
     form=ApplicationForm(request.POST or None,instance=app)
@@ -37,7 +37,7 @@ def apply(request):
         return redirect('practice-apply')
     return render(request,'practice/apply.html',{'form':form,'application':app})
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 def dashboard(request):
     if not request.user.is_therapist: return redirect('practice-apply')
     return render(request,'practice/dashboard.html',{'wallet':balance(request.user),
@@ -45,14 +45,14 @@ def dashboard(request):
         'withdrawals':WithdrawalRequest.objects.filter(therapist=request.user),
         'ledger':request.user.therapy_ledger.order_by('-created_at')[:50]})
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 def profile(request):
     if not request.user.is_therapist: return redirect('practice-apply')
     form=ProfileForm(request.POST or None,instance=request.user.therapist_profile)
     if request.method=='POST' and form.is_valid(): form.save();messages.success(request,'Practice profile saved.');return redirect('practice-dashboard')
     return render(request,'practice/profile.html',{'form':form})
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 @require_POST
 def withdraw(request):
     if not request.user.is_therapist: return redirect('practice-apply')
@@ -68,7 +68,7 @@ def withdraw(request):
     else: messages.error(request,'Enter a valid amount and payout account.')
     return redirect('practice-dashboard')
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 def appointment(request,pk):
     a=get_object_or_404(Appointment.objects.filter(Q(user=request.user)|Q(therapist=request.user)),pk=pk)
     if request.method=='POST':
@@ -96,14 +96,14 @@ class BookingForm(forms.Form):
     location=forms.ChoiceField(choices=[('Online','Online'),('In person','In person')])
     reason=forms.CharField(max_length=200,required=False)
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 def directory(request):
     query=request.GET.get('q','').strip()
     providers=Therapist.objects.filter(user__is_active=True,user__is_therapist=True,is_available=True).select_related('user')
     if query: providers=providers.filter(user__name__icontains=query)
     return render(request,'practice/directory.html',{'providers':providers,'query':query})
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 def provider(request,pk):
     from decimal import Decimal
     from .views import validate_appointment_slot
@@ -127,9 +127,15 @@ def provider(request,pk):
 
 
 class PracticeAwareLoginView(LoginView):
+    template_name='practice/login.html'
+    def get_success_url(self):
+        return self.get_redirect_url() or reverse('practice-dashboard')
+
+
+class WorkLoginView(LoginView):
     template_name='work/login.html'
     def get_success_url(self):
-        return self.get_redirect_url() or reverse('practice-dashboard' if self.request.user.is_therapist else 'hearteli-work-index')
+        return self.get_redirect_url() or reverse('hearteli-work-index')
 
 
 def signup(request):

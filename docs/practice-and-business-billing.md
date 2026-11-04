@@ -4,7 +4,7 @@ Implemented on `feature/therapist-business-billing`, 4 November 2026.
 
 ## Therapist workflow
 
-Web: `/practice/signup/` → account → `/practice/apply/` → administrator review → `/practice/` → profile/availability, appointments/chat, earnings and withdrawal requests. Approved therapists land on their practice after web sign-in. Existing members can apply without creating a duplicate identity.
+Web: `/practice/signup/` → account → `/practice/apply/` → administrator review → `/practice/` → profile/availability, appointments/chat, earnings and withdrawal requests. Therapist sign-in/logout and navigation live under `/practice/`, separately from the owner/manager workplace console under `/work/`. Approved therapists land on their practice after web sign-in. Existing members can apply without creating a duplicate identity.
 
 Mobile: create/sign into a normal account → Settings → Apply as a therapist → submit professional details → pending/rejected/approved state. After approval, sign in again to refresh the role. Approved therapist login and restored sessions open the practice shell with Practice, Sessions, Profile and Settings. The Personal space action retains access to personal check-ins. Session lists include private appointment chat, start/complete/cancel, and client-only payment/reschedule actions.
 

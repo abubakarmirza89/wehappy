@@ -1,7 +1,7 @@
 
 from django.contrib import admin
 from django.urls import path, include
-from django.contrib.auth.views import LoginView as WebLoginView, LogoutView as WebLogoutView
+from django.contrib.auth.views import LogoutView as WebLogoutView
 from apps.tracking import work_web, business_web
 from apps.users import billing, practice_web
 from apps.users import notification_web
@@ -21,6 +21,8 @@ from apps.users.views import (
 
 urlpatterns = [
     path('practice/signup/',practice_web.signup,name='practice-signup'),
+    path('practice/login/',practice_web.PracticeAwareLoginView.as_view(),name='practice-login'),
+    path('practice/logout/',WebLogoutView.as_view(next_page='/practice/login/'),name='practice-logout'),
     path('therapy/',practice_web.directory,name='therapy-directory'),
     path('therapy/<int:pk>/',practice_web.provider,name='therapy-provider'),
     path('work/<int:pk>/pages/<str:section>/',business_web.page,name='business-page'),
@@ -54,7 +56,7 @@ urlpatterns = [
     path('notifications/nudges/<int:pk>/', notification_web.nudge_detail, name='hearteli-nudge-detail'),
     path('forgot-password/', forgot_password_page, name='hearteli-forgot-password'),
     path('reset-password/', reset_password_page, name='reset-password-page'),
-    path('work/login/', practice_web.PracticeAwareLoginView.as_view(), name='hearteli-work-login'),
+    path('work/login/', practice_web.WorkLoginView.as_view(), name='hearteli-work-login'),
     path('work/register/', work_web.register, name='hearteli-work-register'),
     path('work/logout/', WebLogoutView.as_view(next_page='/work/login/'), name='hearteli-work-logout'),
     path('work/', work_web.index, name='hearteli-work-index'),

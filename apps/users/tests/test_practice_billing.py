@@ -126,11 +126,17 @@ class PracticeBillingTests(TestCase):
         self.assertEqual(balance(self.therapist)['available_balance'],90)
     def test_dashboard_and_web_pages_render(self):
         self.client.force_login(self.therapist)
-        self.assertContains(self.client.get('/practice/'),'Your practice')
+        practice_page=self.client.get('/practice/')
+        self.assertContains(practice_page,'Your practice')
+        self.assertContains(practice_page,'/practice/profile/')
+        self.assertNotContains(practice_page,'/work/')
         self.assertEqual(self.client.get('/practice/profile/').status_code,200)
         self.client.force_login(self.member)
         for page in ['members','resources','settings','insights']:
-            self.assertEqual(self.client.get(f'/work/{self.workspace.pk}/pages/{page}/').status_code,200)
+            work_page=self.client.get(f'/work/{self.workspace.pk}/pages/{page}/')
+            self.assertEqual(work_page.status_code,200)
+            self.assertNotContains(work_page,'/practice/')
+            self.assertNotContains(work_page,'/therapy/')
         self.assertContains(self.client.get(f'/work/{self.workspace.pk}/billing/'),'Plans & billing')
 
     def test_unsigned_webhook_is_rejected(self):
@@ -171,5 +177,9 @@ class PracticeBillingTests(TestCase):
         self.assertEqual(self.api.post(f'/api/users/create-appointment/{self.therapist.pk}/',{'date':str(timezone.now().date()+timedelta(days=3)),'time':'12:00','location':'Online','reason':'Support'}).status_code,400)
 
     def test_therapist_web_login_opens_practice(self):
-        response=self.client.post('/work/login/',{'username':self.therapist.email,'password':'StrongPass123'})
+        response=self.client.post('/practice/login/',{'username':self.therapist.email,'password':'StrongPass123'})
         self.assertRedirects(response,'/practice/')
+
+    def test_work_login_does_not_route_therapists_to_practice(self):
+        response=self.client.post('/work/login/',{'username':self.therapist.email,'password':'StrongPass123'})
+        self.assertRedirects(response,'/work/')

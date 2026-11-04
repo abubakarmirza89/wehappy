@@ -7,7 +7,7 @@ from .models import Notification
 from apps.tracking.models import CircleConnection, EmpathyNudge
 
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 def inbox(request):
     notifications = Notification.objects.filter(recipient=request.user)[:100]
     accepted = CircleConnection.objects.filter(recipient=request.user, accepted_at__isnull=False,
@@ -17,7 +17,7 @@ def inbox(request):
     return render(request, 'work/notifications.html', {'notifications': notifications, 'nudges': nudges})
 
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 @require_http_methods(['GET', 'POST'])
 def nudge_detail(request, pk):
     accepted = CircleConnection.objects.filter(recipient=request.user, accepted_at__isnull=False,
