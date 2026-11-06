@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
 import 'safety_screen.dart';
@@ -14,10 +15,12 @@ class CheckInScreen extends StatefulWidget {
   const CheckInScreen({
     super.key,
     required this.apiClient,
+    required this.sessionStore,
     required this.userId,
     this.onComplete,
   });
   final ApiClient apiClient;
+  final SessionStore sessionStore;
   final String userId;
   final VoidCallback? onComplete;
   @override
@@ -43,7 +46,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
   final tags = <String>{}, preferences = <String>{};
   final note = TextEditingController(), message = TextEditingController();
   List<dynamic> connections = [];
-  bool busy = false, hasDraft = false, patternSuggested = false;
+  bool busy = false,
+      hasDraft = false,
+      patternSuggested = false,
+      sharingDeclined = false;
   String? error;
   late final String retryKey = _newKey();
   static String _newKey() {
@@ -209,7 +215,6 @@ class _CheckInScreenState extends State<CheckInScreen> {
     context,
     MaterialPageRoute(
       builder: (_) => FeelBetterScreen(
-        apiClient: widget.apiClient,
         onDone: () {
           Navigator.pop(context);
           widget.onComplete?.call();
@@ -217,6 +222,14 @@ class _CheckInScreenState extends State<CheckInScreen> {
       ),
     ),
   );
+
+  void _finishPrivateCheckIn() {
+    if (widget.onComplete != null) {
+      widget.onComplete!();
+    } else {
+      Navigator.pop(context);
+    }
+  }
 
   String _preferenceText() => preferences
       .map(
@@ -236,22 +249,44 @@ class _CheckInScreenState extends State<CheckInScreen> {
   Widget build(BuildContext context) {
     const titles = [
       'How are you feeling today?',
-      'Anything on your mind?',
-      'What would help?',
-      'Who can know?',
-      'Review your nudge',
+      'Want to add a little more?',
+      'What feels supportive to you?',
+      'Would some support help?',
+      'Ready to reach out?',
     ];
+    final stepZeroTitle = feeling < 0
+        ? titles[0]
+        : feeling <= 1
+        ? 'Glad to hear it!'
+        : feeling == 2
+        ? 'Every feeling belongs'
+        : "We're glad you checked in";
+    final stepZeroMessage = feeling < 0
+        ? "There's no right or wrong answer. Just a moment to check in with yourself."
+        : feeling <= 1
+        ? "It's lovely to have moments that feel good. Enjoy this one."
+        : feeling == 2
+        ? "Not every day needs to be amazing. It's okay to simply be where you are."
+        : "Some days are harder than others. You don't have to explain or change how you feel right now.";
+    final stepThreeTitle = sharingDeclined
+        ? "That's completely okay"
+        : patternSuggested
+        ? 'Want to let someone know?'
+        : recipient != null
+        ? 'A little nudge can go a long way'
+        : feeling >= 3
+        ? 'Would some support help?'
+        : 'Thank you for checking in';
+    final stepThreeMessage = sharingDeclined
+        ? 'Your feelings are yours to share, whenever and with whoever you choose.'
+        : patternSuggested
+        ? 'You asked Hearteli to check with you after a couple of hard days. Would you like ${connections.isEmpty ? 'someone you trust' : connections.first['recipient_name']} to know?'
+        : recipient != null
+        ? 'Would you like ${chosen?['recipient_name']} to know that some support might help today?'
+        : feeling >= 3
+        ? 'You can let someone you trust know that a kind word might mean a lot today.'
+        : 'Making space for how you feel is a meaningful step.';
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Daily Check-In'),
-        leading: step == 0
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Previous step',
-                onPressed: () => setState(() => step--),
-              ),
-      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -265,6 +300,15 @@ class _CheckInScreenState extends State<CheckInScreen> {
               child: ListView(
                 padding: screenPadding,
                 children: [
+                  if (step > 0)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
+                        onPressed: () => setState(() => step--),
+                        tooltip: 'Previous step',
+                        icon: const Icon(Icons.arrow_back),
+                      ),
+                    ),
                   Text(
                     'STEP ${step + 1} OF 5',
                     style: const TextStyle(
@@ -275,21 +319,39 @@ class _CheckInScreenState extends State<CheckInScreen> {
                   ),
                   const SizedBox(height: 14),
                   PageIntro(
-                    title: titles[step],
-                    subtitle: step == 0
-                        ? 'It’s okay to have good days and tough days.'
-                        : step == 1
-                        ? 'The note stays private. You can skip this.'
-                        : step == 2
-                        ? 'Select what feels right, or skip.'
+                    title: step == 0
+                        ? stepZeroTitle
+                        : step == 1 || step == 2
+                        ? titles[step]
                         : step == 3
-                        ? 'Your check-in is saved privately. Sharing is your choice.'
-                        : 'Only the exact text shown here will be available to this person.',
+                        ? stepThreeTitle
+                        : titles[step],
+                    subtitle: step == 0
+                        ? stepZeroMessage
+                        : step == 1
+                        ? "You can write about what's on your mind, or simply leave today's check-in as it is."
+                        : step == 2
+                        ? 'A kind message, a quiet moment or someone simply listening? Let Hearteli know what helps.'
+                        : step == 3
+                        ? stepThreeMessage
+                        : "Here's what ${chosen?['recipient_name'] ?? 'the person you choose'} will see. You can change or cancel this before sending.",
                   ),
                   const SizedBox(height: 22),
-                  if (step == 3 && patternSuggested)
-                    const StatusPanel(
-                      message: 'A couple of tough check-ins. Would you like to choose someone for support? Nothing is sent without your review.',
+                  if (step == 0 && feeling >= 3)
+                    TextButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SafetyScreen(
+                            apiClient: widget.apiClient,
+                            sessionStore: widget.sessionStore,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.health_and_safety_outlined),
+                      label: const Text(
+                        'Need to talk to someone now? View help',
+                      ),
                     ),
                   if (step == 4)
                     CheckboxListTile(
@@ -366,7 +428,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
                         onPressed: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const SafetyScreen(),
+                            builder: (_) => SafetyScreen(
+                              apiClient: widget.apiClient,
+                              sessionStore: widget.sessionStore,
+                            ),
                           ),
                         ),
                         icon: const Icon(Icons.health_and_safety_outlined),
@@ -430,14 +495,16 @@ class _CheckInScreenState extends State<CheckInScreen> {
                               : preferences.remove(e.key),
                         ),
                       ),
-                  ] else if (step == 3) ...[
+                  ] else if (step == 3 &&
+                      (feeling >= 3 || patternSuggested) &&
+                      !sharingDeclined) ...[
                     HearteliCard(
                       color: AppColors.softBlue,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Keep private',
+                            'Your feelings are yours to share',
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 18,
@@ -445,13 +512,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
                           ),
                           const SizedBox(height: 5),
                           const Text(
-                            'No one will receive this check-in unless you approve a nudge.',
+                            'Your check-in stays private unless you choose to send an Empathy Nudge.',
                           ),
                           const SizedBox(height: 12),
-                          OutlinedButton(
-                            onPressed: _showProgress,
-                            child: const Text('Done — keep private'),
-                          ),
                         ],
                       ),
                     ),
@@ -462,23 +525,27 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       )
                     else ...[
                       const Text(
-                        'Or share a gentle nudge with one person',
+                        'You can let someone you trust know that a kind word might mean a lot today.',
                         style: TextStyle(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 12),
                       for (final raw in connections)
                         RadioListTile<int>(
                           title: Text('${raw['recipient_name']}'),
-                          subtitle: Text('${raw['relationship']} · Eligible'),
+                          subtitle: Text(
+                            'Would you like ${raw['recipient_name'] ?? 'this person'} to know that some support might help today?',
+                          ),
                           value: raw['recipient'] as int,
                           groupValue: recipient,
                           onChanged: (v) => setState(() {
                             recipient = v;
                             message.text =
-                                'I’m feeling ${labels[feeling].toLowerCase()} today. A quick check-in would mean a lot.';
+                                'Someone in your Circle would appreciate some kindness today.';
                           }),
                         ),
                     ],
+                  ] else if (step == 3) ...[
+                    const SizedBox.shrink(),
                   ] else ...[
                     HearteliCard(
                       child: Column(
@@ -497,8 +564,12 @@ class _CheckInScreenState extends State<CheckInScreen> {
                             maxLines: 3,
                             maxLength: 500,
                             decoration: const InputDecoration(
-                              labelText: 'Exact message they will see',
+                              labelText: 'Message they will see',
                             ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'On their lock screen, this shows as: "Someone in your Circle would appreciate some kindness today."',
                           ),
                           const SizedBox(height: 10),
                           Text(
@@ -541,15 +612,34 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       child: Text(
                         busy
                             ? 'Saving…'
+                            : step == 0
+                            ? feeling < 0
+                                  ? 'Check in'
+                                  : 'Continue'
+                            : step == 1
+                            ? 'Add reflection'
                             : step == 2
-                            ? 'Save privately'
-                            : 'Next',
+                            ? 'Continue'
+                            : 'Continue',
                       ),
                     ),
-                  if (step == 3 && recipient != null)
+                  if (step == 3 && (feeling < 3 && !patternSuggested ||
+                      sharingDeclined))
+                    FilledButton(
+                      onPressed: _finishPrivateCheckIn,
+                      child: const Text('Done'),
+                    ),
+                  if (step == 3 && (feeling >= 3 || patternSuggested) &&
+                      !sharingDeclined)
+                    TextButton(
+                      onPressed: () => setState(() => sharingDeclined = true),
+                      child: const Text('Not right now'),
+                    ),
+                  if (step == 3 && recipient != null &&
+                      !sharingDeclined)
                     FilledButton(
                       onPressed: busy ? null : _next,
-                      child: const Text('Review nudge'),
+                      child: const Text('Continue'),
                     ),
                   if (step == 4)
                     FilledButton(
@@ -557,7 +647,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                           ? null
                           : _send,
                       child: Text(
-                        busy ? 'Creating…' : 'Confirm & create nudge',
+                        busy ? 'Sending…' : 'Send an Empathy Nudge',
                       ),
                     ),
                   if (step == 1 || step == 2)

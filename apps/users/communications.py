@@ -11,21 +11,86 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from django.utils.translation import gettext_lazy as _
 from .models import EmailDelivery, Notification
 
+EMAIL_SIGNATURE = {
+    'closing': _('Warm regards,'),
+    'team': _('The Hearteli Team'),
+    'tagline': _('Know when to be there.'),
+}
 
-def queue_email(user, kind, subject, message, *, key, path='', target_id=None, sensitive=False):
+
+def email_signature_text():
+    return '\n'.join(map(str, EMAIL_SIGNATURE.values()))
+
+
+def queue_push_notification(
+    user,
+    kind,
+    title,
+    message,
+    *,
+    key,
+    path='',
+    target_id=None,
+    sensitive=False,
+    in_app_message=None,
+):
+    if not user.is_active:
+        return None
+    delivery, created = EmailDelivery.objects.get_or_create(
+        event_key=key,
+        defaults={
+            'recipient': user,
+            'kind': kind,
+            'channel': 'push',
+            'subject': title,
+            'message': message,
+            'path': path,
+            'target_id': target_id,
+            'sensitive': sensitive,
+        },
+    )
+    if created and in_app_message:
+        Notification.objects.create(recipient=user, verb=in_app_message[:255])
+    return delivery
+
+
+def queue_email(
+    user,
+    kind,
+    subject,
+    message,
+    *,
+    key,
+    path='',
+    target_id=None,
+    sensitive=False,
+    push=False,
+    push_subject=None,
+    push_message=None,
+    in_app_message=None,
+):
     if not user.is_active:
         return None
     delivery, created = EmailDelivery.objects.get_or_create(event_key=key, defaults={
         'recipient': user, 'kind': kind, 'subject': subject, 'message': message,
         'path': path, 'target_id': target_id, 'sensitive': sensitive})
     if created and kind not in ('password_reset', 'password_changed'):
-        Notification.objects.create(recipient=user, verb=message[:255])
-    if created and kind not in ('welcome', 'password_reset', 'password_changed'):
-        EmailDelivery.objects.get_or_create(event_key=key + ':push', defaults={
-            'recipient': user, 'kind': kind, 'channel': 'push', 'subject': subject,
-            'message': message, 'path': path, 'target_id': target_id, 'sensitive': sensitive})
+        verb = in_app_message or message
+        Notification.objects.create(recipient=user, verb=verb[:255])
+    if push:
+        queue_push_notification(
+            user,
+            kind,
+            push_subject or subject,
+            push_message or message,
+            key=key + ':push',
+            path=path,
+            target_id=target_id,
+            sensitive=sensitive,
+        )
     return delivery
 
 
@@ -38,7 +103,7 @@ def request_password_reset(email):
     query = urlencode({'uid': urlsafe_base64_encode(force_bytes(user.pk)),
                        'token': default_token_generator.make_token(user)})
     delivery = queue_email(user, 'password_reset', 'Reset your Hearteli password',
-        'Use the secure link below to choose a new password. If you did not request this, ignore this email.',
+        "We received a request to reset your Hearteli password.\n\nUse the link below to set a new one.\n\nIf you didn't request this, you can ignore this email.",
         key=f'reset:{user.pk}:{uuid.uuid4()}', path=f'/reset-password/?{query}')
     if delivery and delivery.status in ('pending', 'retry'):
         dispatch_email_batch(limit=1, delivery_ids=[delivery.pk])
@@ -46,14 +111,19 @@ def request_password_reset(email):
 
 def password_changed(user):
     import uuid
-    queue_email(user, 'password_changed', 'Your Hearteli password changed',
-        'Your password was changed. If this was not you, request a password reset and contact support.',
-        key=f'password-changed:{user.pk}:{uuid.uuid4()}', path='/forgot-password/')
+    queue_email(user, 'password_changed', 'Your Hearteli password has changed',
+        "Your account password was recently changed.\n\nIf this was you, no action is needed.\n\nIf you don't recognise this activity, please secure your account and contact Hearteli support.",
+        key=f'password-changed:{user.pk}:{uuid.uuid4()}')
 
 
 def delivery_allowed(delivery):
     """Recheck preferences and consent immediately before sending a queued event."""
-    from apps.tracking.models import CircleConnection, EmpathyNudge, HearteliPreferences
+    from apps.tracking.models import (
+        CircleConnection,
+        EmpathyNudge,
+        HearteliPreferences,
+        MoodCheckIn,
+    )
     from .models import Appointment
     user = delivery.recipient
     if not user.is_active:
@@ -61,19 +131,12 @@ def delivery_allowed(delivery):
     if delivery.kind == 'daily_prompt':
         pref, _ = HearteliPreferences.objects.get_or_create(user=user)
         local_date = timezone.now().astimezone(ZoneInfo(pref.timezone_name)).date()
-        if f'daily-prompt:{user.pk}:{local_date.isoformat()}:' not in delivery.event_key:
+        if delivery.event_key != f'daily-prompt:{user.pk}:{local_date.isoformat()}':
+            return 'suppress'
+        if not pref.reminder_enabled or MoodCheckIn.objects.filter(user=user, date=local_date).exists():
             return 'suppress'
         if not user.device_tokens.filter(is_active=True).exists():
             return 'suppress'
-        if EmailDelivery.objects.filter(
-            recipient=user,
-            kind='daily_prompt',
-            channel='push',
-            status='sent',
-            sent_at__gt=timezone.now() - timedelta(hours=4),
-        ).exists():
-            return 'defer'
-        return 'send'
     if delivery.kind in ('welcome', 'password_reset', 'password_changed'):
         if delivery.kind == 'password_reset':
             from urllib.parse import urlsplit, parse_qs
@@ -85,6 +148,13 @@ def delivery_allowed(delivery):
     if delivery.channel == 'email' and not pref.email_notifications:
         return 'suppress'
     if delivery.kind == 'circle_invite' and not CircleConnection.objects.filter(pk=delivery.target_id, recipient=user).exists():
+        return 'suppress'
+    if delivery.kind == 'circle_accepted' and not CircleConnection.objects.filter(
+        pk=delivery.target_id,
+        owner=user,
+        accepted_at__isnull=False,
+        declined_at__isnull=True,
+    ).exists():
         return 'suppress'
     if delivery.kind == 'workspace':
         from apps.tracking.models import WorkspaceMembership
@@ -170,14 +240,26 @@ def dispatch_email_batch(limit=100, delivery_ids=None):
                     continue
                 delivery.attempts += 1
                 url = settings.HEARTELI_PUBLIC_URL.rstrip('/') + delivery.path if delivery.path else settings.HEARTELI_PUBLIC_URL
-                context = {'name': delivery.recipient.name, 'subject': delivery.subject,
+                context = {'subject': delivery.subject,
                            'message': delivery.message, 'url': url,
+                           'cta_label': {
+                               'password_reset': 'Reset password',
+                               'circle_invite': 'View invitation',
+                               'nudge': 'Open Hearteli',
+                           }.get(delivery.kind, '' if delivery.kind == 'password_changed' else 'Open Hearteli'),
                            'logo_url': urljoin(
                                settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/',
                                static('hearteli/logo.png').lstrip('/'),
                            ),
+                           'footer_text': '',
+                           'email_signature': EMAIL_SIGNATURE,
                            'security': delivery.kind in ('password_reset', 'password_changed')}
-                text = f"Hi {delivery.recipient.name},\n\n{delivery.message}\n\n{url}\n\nHearteli — Know when to be there."
+                text = delivery.message
+                if context['cta_label']:
+                    text += f"\n\n{context['cta_label']}: {url}"
+                if context['footer_text']:
+                    text += f"\n\n{context['footer_text']}"
+                text += f"\n\n{email_signature_text()}"
                 mail = EmailMultiAlternatives(delivery.subject, text, settings.DEFAULT_FROM_EMAIL,
                     [delivery.recipient.email], headers={'Message-ID': f'<hearteli-{delivery.pk}@{settings.HEARTELI_EMAIL_MESSAGE_DOMAIN}>'})
                 mail.attach_alternative(render_to_string('emails/transactional.html', context), 'text/html')

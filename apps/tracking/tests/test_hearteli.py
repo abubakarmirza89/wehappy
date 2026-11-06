@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APITestCase
 from apps.tracking.models import CircleConnection, Mood, MoodCheckIn, EmpathyNudge, Suggestion, Message
-from apps.users.models import Send_To_Relative
+from apps.users.models import EmailDelivery, Notification, Send_To_Relative
 import uuid
 
 User = get_user_model()
@@ -44,6 +44,67 @@ class HearteliConsentTests(APITestCase):
         self.assertEqual(self.client.get('/api/tracking/suggestions/by-mood/?mood=Tough').status_code, 200)
         self.assertEqual(Send_To_Relative.objects.count(), 0)
 
+    def test_circle_acceptance_queues_approved_owner_update(self):
+        connection = CircleConnection.objects.create(
+            owner=self.sender,
+            recipient=self.recipient,
+        )
+        self.client.force_authenticate(user=self.recipient)
+        response = self.client.patch(
+            f'/api/tracking/hearteli/circle/{connection.id}/',
+            {'accept': True, 'may_receive_nudges': True},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        push = EmailDelivery.objects.get(
+            kind='circle_accepted',
+            channel='push',
+            recipient=self.sender,
+        )
+        self.assertEqual(push.subject, 'Your Circle has grown')
+        self.assertEqual(push.message, 'Someone has accepted your Circle invitation.')
+        self.assertNotIn(self.recipient.name, push.subject + push.message)
+        self.assertEqual(
+            Notification.objects.get(
+                recipient=self.sender,
+                verb='Recipient has accepted your Circle invitation.',
+            ).verb,
+            'Recipient has accepted your Circle invitation.',
+        )
+
+    def test_declined_circle_invitation_is_not_notified_to_inviter(self):
+        connection = CircleConnection.objects.create(
+            owner=self.sender,
+            recipient=self.recipient,
+        )
+        owner_notifications = Notification.objects.filter(
+            recipient=self.sender,
+        ).count()
+        self.client.force_authenticate(user=self.recipient)
+        response = self.client.patch(
+            f'/api/tracking/hearteli/circle/{connection.id}/',
+            {'accept': False},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.data['declined_at'])
+        self.assertEqual(
+            Notification.objects.filter(recipient=self.sender).count(),
+            owner_notifications,
+        )
+        self.client.force_authenticate(user=self.sender)
+        connections = self.client.get('/api/tracking/hearteli/circle/').data
+        self.assertIsNotNone(connections[0]['declined_at'])
+        self.client.force_authenticate(user=self.recipient)
+        self.assertEqual(
+            self.client.patch(
+                f'/api/tracking/hearteli/circle/{connection.id}/',
+                {'accept': True},
+                format='json',
+            ).status_code,
+            400,
+        )
+
 class HearteliPrivacyBoundaryTests(APITestCase):
     def setUp(self):
         self.member = User.objects.create_user(email='member-boundary@example.com', name='Member Boundary',
@@ -75,22 +136,29 @@ class HearteliPrivacyBoundaryTests(APITestCase):
         self.assertEqual(self.client.get('/api/tracking/hearteli/outcomes/').data, [])
         self.assertNotIn('Private journal', str(self.client.get('/api/tracking/hearteli/nudges/').data))
 
-    def test_support_conversation_is_scoped_and_revocable(self):
+    def test_reserved_nudge_messaging_is_unavailable(self):
         response = self.client.post('/api/tracking/hearteli/nudges/', {
             'recipient': self.recipient.id, 'check_in': self.checkin.id,
             'message': 'Could you check in?', 'idempotency_key': str(uuid.uuid4())}, format='json')
         self.assertEqual(response.status_code, 201)
         path = f"/api/tracking/hearteli/nudges/{response.data['id']}/messages/"
-        self.assertEqual(self.client.post(path, {'body': 'Thanks for being here.'}, format='json').status_code, 201)
-        self.client.force_authenticate(user=self.recipient)
-        self.assertEqual(self.client.get(path).status_code, 200)
-        self.assertEqual(self.client.post(path, {'body': 'How are you?'}, format='json').status_code, 201)
-        self.client.force_authenticate(user=self.therapist)
-        self.assertEqual(self.client.get(path).status_code, 404)
-        self.client.force_authenticate(user=self.member)
-        self.client.delete(f'/api/tracking/hearteli/circle/{self.connection.id}/')
+        self.assertEqual(self.client.post(path, {'body': 'Thanks for being here.'}, format='json').status_code, 404)
         self.client.force_authenticate(user=self.recipient)
         self.assertEqual(self.client.get(path).status_code, 404)
+
+    def test_recipient_can_save_each_specified_response(self):
+        response = self.client.post('/api/tracking/hearteli/nudges/', {
+            'recipient': self.recipient.id, 'check_in': self.checkin.id,
+            'message': 'Could you check in?', 'idempotency_key': str(uuid.uuid4())}, format='json')
+        self.assertEqual(response.status_code, 201)
+        nudge_id = response.data['id']
+        self.client.force_authenticate(user=self.recipient)
+        path = f'/api/tracking/hearteli/nudges/{nudge_id}/respond/'
+        response = self.client.post(path, {'choice': 'will_give_space'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['recipient_choice'], 'will_give_space')
+        self.assertEqual(response.data['status'], 'acknowledged')
+        self.assertEqual(self.client.post(path, {'choice': 'cannot_help'}, format='json').status_code, 400)
 
     def test_therapy_grant_only_selected_context_and_revoke(self):
         other = MoodCheckIn.objects.create(user=self.member, feeling_category='good', notes='Never selected')

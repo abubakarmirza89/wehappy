@@ -54,8 +54,9 @@ class _NudgeConversationScreenState extends State<NudgeConversationScreen> {
             ]))),
         if (messages.isNotEmpty) TextButton(
           onPressed: () => Navigator.push(context, MaterialPageRoute(
-            builder: (_) => FeelBetterScreen(apiClient: widget.apiClient,
-              onDone: () => Navigator.popUntil(context, (route) => route.isFirst)))),
+            builder: (_) => FeelBetterScreen(
+              onDone: () => Navigator.popUntil(context, (route) => route.isFirst),
+            ))),
           child: const Text('See your progress')),
       ]))),
       if (error == null) Padding(padding: screenPadding, child: Row(children: [

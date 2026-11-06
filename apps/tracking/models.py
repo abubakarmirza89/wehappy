@@ -340,6 +340,7 @@ class CircleConnection(models.Model):
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_connections')
     relationship = models.CharField(max_length=40, default='Friend')
     accepted_at = models.DateTimeField(null=True, blank=True)
+    declined_at = models.DateTimeField(null=True, blank=True)
     may_receive_nudges = models.BooleanField(default=False)
     may_receive_preference = models.BooleanField(default=False)
     ask_on_pattern = models.BooleanField(default=False)
@@ -360,6 +361,12 @@ class EmpathyNudge(models.Model):
     idempotency_key = models.UUIDField(null=True, blank=True)
     delivery_status = models.CharField(max_length=20, choices=[('created', 'Created'), ('queued', 'Queued'), ('sent', 'Sent'), ('failed', 'Failed'), ('delivered', 'Delivered'), ('opened', 'Opened')], default='created')
     status = models.CharField(max_length=20, choices=[('sent','Sent'),('acknowledged','Acknowledged'),('cannot_help','Cannot help')], default='sent')
+    recipient_choice = models.CharField(max_length=40, blank=True, choices=[
+        ('recipient_reported_reached_out', "I've reached out"),
+        ('will_check_in_later', "I'll check in later"),
+        ('will_give_space', "I'll give space"),
+        ('cannot_help', "I can't right now"),
+    ])
     created_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(null=True, blank=True)
 

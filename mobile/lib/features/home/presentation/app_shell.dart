@@ -57,7 +57,11 @@ class _AppShellState extends State<AppShell> {
               context,
               MaterialPageRoute(
                 builder: (_) =>
-                    NudgeDetail(apiClient: widget.apiClient, id: id),
+                    NudgeDetail(
+                      apiClient: widget.apiClient,
+                      sessionStore: widget.sessionStore,
+                      id: id,
+                    ),
               ),
             );
         });
@@ -118,6 +122,7 @@ class _AppShellState extends State<AppShell> {
       CheckInScreen(
         key: ValueKey('checkin-$refresh'),
         apiClient: widget.apiClient,
+        sessionStore: widget.sessionStore,
         userId: widget.sessionStore.userId ?? '',
         onComplete: complete,
       ),
@@ -249,9 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 5),
           Text(
-            checkedIn
-                ? 'Thanks for checking in today.'
-                : 'How are you feeling today?',
+            checkedIn ? 'Thank you for checking in' : 'A moment just for you.',
             style: const TextStyle(color: AppColors.neutralGrey, fontSize: 16),
           ),
           const SizedBox(height: 22),
@@ -267,7 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 15),
                 const Text(
-                  'Small check-ins make a big difference.',
+                  'How are you feeling today?',
                   style: TextStyle(
                     fontSize: 23,
                     height: 1.15,
@@ -276,13 +279,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'A moment for yourself. Sharing is always your choice.',
+                Text(
+                  checkedIn
+                      ? 'Making space for how you feel is a meaningful step.'
+                      : "There's no right or wrong answer. Just a moment to check in with yourself.",
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: widget.onCheckIn,
-                  child: Text(checkedIn ? 'Check in again' : 'Check in now'),
+                  child: Text(checkedIn ? 'Check in again' : 'Check in'),
                 ),
               ],
             ),
@@ -302,7 +307,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
-                        SupportInboxScreen(apiClient: widget.apiClient),
+                        SupportInboxScreen(
+                          apiClient: widget.apiClient,
+                          sessionStore: widget.sessionStore,
+                        ),
                   ),
                 ),
               ),
@@ -359,7 +367,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) =>
-                          SupportInboxScreen(apiClient: widget.apiClient),
+                          SupportInboxScreen(
+                            apiClient: widget.apiClient,
+                            sessionStore: widget.sessionStore,
+                          ),
                     ),
                   ),
                 ),
@@ -390,6 +401,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       MaterialPageRoute(
                         builder: (_) => NudgeDetail(
                           apiClient: widget.apiClient,
+                          sessionStore: widget.sessionStore,
                           id: nudges.first['id'] as int,
                         ),
                       ),
@@ -422,32 +434,33 @@ class _QuickAction extends StatelessWidget {
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => Expanded(
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: AppColors.blush,
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: Icon(icon, color: AppColors.coral, size: 22),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Column(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.blush,
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(icon, color: AppColors.coral, size: 22),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-          ],
+          ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 class MoreScreen extends StatelessWidget {
@@ -460,89 +473,97 @@ class MoreScreen extends StatelessWidget {
   final SessionStore sessionStore;
   @override
   Widget build(BuildContext context) => ListView(
-    padding: screenPadding,
-    children: [
-      const PageIntro(
-        title: 'More',
-        subtitle: 'Support, privacy and your account.',
-      ),
-      const SizedBox(height: 22),
-      HearteliCard(
-        child: Column(
-          children: [
-            LabelRow(
-              icon: Icons.favorite_outline,
-              title: 'Support history',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SupportInboxScreen(apiClient: apiClient),
-                ),
-              ),
-            ),
-            LabelRow(
-              icon: Icons.psychology_outlined,
-              title: 'Find a therapist',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => TherapyScreen(apiClient: apiClient),
-                ),
-              ),
-            ),
-            LabelRow(
-              icon: Icons.calendar_month_outlined,
-              title: 'Appointments',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('Appointments')),
-                    body: AppointmentsScreen(apiClient: apiClient),
-                  ),
-                ),
-              ),
-            ),
-            LabelRow(
-              icon: Icons.work_outline,
-              title: 'For Work',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('For Work')),
-                    body: WorkScreen(
-                      apiClient: apiClient,
-                      sessionStore: sessionStore,
+        padding: screenPadding,
+        children: [
+          const PageIntro(
+            title: 'More',
+            subtitle: 'Support, privacy and your account.',
+          ),
+          const SizedBox(height: 22),
+          HearteliCard(
+            child: Column(
+              children: [
+                LabelRow(
+                  icon: Icons.favorite_outline,
+                  title: 'Support updates',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SupportInboxScreen(
+                        apiClient: apiClient,
+                        sessionStore: sessionStore,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-            LabelRow(
-              icon: Icons.health_and_safety_outlined,
-              title: 'Immediate support',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SafetyScreen()),
-              ),
-            ),
-            LabelRow(
-              icon: Icons.settings_outlined,
-              title: 'Settings',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SettingsScreen(
-                    apiClient: apiClient,
-                    sessionStore: sessionStore,
+                LabelRow(
+                  icon: Icons.psychology_outlined,
+                  title: 'Find a therapist',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TherapyScreen(apiClient: apiClient),
+                    ),
                   ),
                 ),
-              ),
+                LabelRow(
+                  icon: Icons.calendar_month_outlined,
+                  title: 'Appointments',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => Scaffold(
+                        appBar: AppBar(title: const Text('Appointments')),
+                        body: AppointmentsScreen(apiClient: apiClient),
+                      ),
+                    ),
+                  ),
+                ),
+                LabelRow(
+                  icon: Icons.work_outline,
+                  title: 'For Work',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => Scaffold(
+                        appBar: AppBar(title: const Text('For Work')),
+                        body: WorkScreen(
+                          apiClient: apiClient,
+                          sessionStore: sessionStore,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                LabelRow(
+                  icon: Icons.health_and_safety_outlined,
+                  title: 'Immediate support',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SafetyScreen(
+                        apiClient: apiClient,
+                        sessionStore: sessionStore,
+                      ),
+                    ),
+                  ),
+                ),
+                LabelRow(
+                  icon: Icons.settings_outlined,
+                  title: 'Settings',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SettingsScreen(
+                        apiClient: apiClient,
+                        sessionStore: sessionStore,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-    ],
-  );
+          ),
+        ],
+      );
 }

@@ -2,24 +2,67 @@
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from apps.users.models import User, Appointment, AppointmentMessage
-from apps.tracking.models import CircleConnection, EmpathyNudge, NudgeMessage, WorkspaceMembership, WorkspaceRoleAudit
-from .communications import queue_email
+from apps.tracking.models import CircleConnection, EmpathyNudge, WorkspaceMembership, WorkspaceRoleAudit
+from .communications import queue_email, queue_push_notification
+from .models import Notification
 
 
 @receiver(post_save, sender=User)
 def welcome(sender, instance, created, raw=False, **kwargs):
     if created and not raw:
-        queue_email(instance, 'welcome', 'Welcome to Hearteli',
-            'Welcome to Hearteli. Start with a private check-in, then choose the people you trust. You control what you share.',
-            key=f'welcome:{instance.pk}', path='/')
+        Notification.objects.create(
+            recipient=instance,
+            verb='Welcome to Hearteli ❤️ — A little more understanding starts here. Take your time, settle in, and make this space your own.',
+        )
 
 
 @receiver(post_save, sender=CircleConnection)
 def circle_invite(sender, instance, created, raw=False, **kwargs):
     if created and not raw:
-        queue_email(instance.recipient, 'circle_invite', 'You have a Hearteli Circle invitation',
-            f'{instance.owner.name} invited you to their Hearteli Circle. Open Hearteli to accept or decline. No check-in data is shared by accepting alone.',
-            key=f'circle:{instance.pk}', path='/notifications/', target_id=instance.pk)
+        queue_email(
+            instance.recipient,
+            'circle_invite',
+            'You\'ve been invited to connect on Hearteli',
+            'Someone you know would like to add you to their trusted Circle on Hearteli.\n\nA Circle is a private way to stay connected and offer support when it\'s welcome.\n\nYou can choose whether to accept.',
+            key=f'circle:{instance.pk}',
+            path='/notifications/',
+            target_id=instance.pk,
+            push=True,
+            push_subject='Someone wants you in their Circle',
+            push_message="You've received an invitation to connect on Hearteli.",
+            in_app_message='Someone wants you in their Circle',
+        )
+
+
+@receiver(pre_save, sender=CircleConnection)
+def circle_connection_previous(sender, instance, raw=False, **kwargs):
+    instance._old_accepted_at = (
+        sender.objects.filter(pk=instance.pk)
+        .values_list('accepted_at', flat=True)
+        .first()
+        if instance.pk
+        else None
+    )
+
+
+@receiver(post_save, sender=CircleConnection)
+def circle_accepted(sender, instance, created, raw=False, **kwargs):
+    if raw or created or instance._old_accepted_at is not None:
+        return
+    if instance.accepted_at is None or instance.declined_at is not None:
+        return
+    first_name = (instance.recipient.name or '').strip().split(maxsplit=1)
+    name = first_name[0] if first_name else 'Someone'
+    queue_push_notification(
+        instance.owner,
+        'circle_accepted',
+        'Your Circle has grown',
+        'Someone has accepted your Circle invitation.',
+        key=f'circle-accepted:{instance.pk}',
+        path='/circle/',
+        target_id=instance.pk,
+        in_app_message=f'{name} has accepted your Circle invitation.',
+    )
 
 
 @receiver(pre_save, sender=EmpathyNudge)
@@ -32,23 +75,39 @@ def nudge_events(sender, instance, created, raw=False, **kwargs):
     if raw:
         return
     if created:
-        queue_email(instance.recipient, 'nudge', 'A gentle check-in from Hearteli',
-            'Someone you care about could use a check-in. Sign in to see only the details they chose to share.',
-            key=f'nudge:{instance.pk}', path=f'/notifications/nudges/{instance.pk}/', target_id=instance.pk, sensitive=True)
+        queue_push_notification(
+            instance.recipient,
+            'nudge',
+            'A little nudge from Hearteli ❤️',
+            'Someone in your Circle would appreciate some kindness today.',
+            key=f'nudge:{instance.pk}:push',
+            path=f'/notifications/nudges/{instance.pk}/',
+            target_id=instance.pk,
+            sensitive=True,
+            in_app_message='A little nudge from Hearteli ❤️',
+        )
         sender.objects.filter(pk=instance.pk).update(delivery_status='queued')
     elif getattr(instance, '_old_status', instance.status) != instance.status and instance.status in ('acknowledged', 'cannot_help'):
-        text = 'Your person acknowledged your nudge. This is an intention to respond, not confirmation that support has happened.' if instance.status == 'acknowledged' else 'Your person cannot help right now. You can choose another person you have authorised.'
-        queue_email(instance.sender, 'acknowledgement', 'An update on your Hearteli nudge', text,
-            key=f'ack:{instance.pk}:{instance.status}', path=f'/notifications/nudges/{instance.pk}/', target_id=instance.pk)
-
-
-@receiver(post_save, sender=NudgeMessage)
-def support_message(sender, instance, created, raw=False, **kwargs):
-    if created and not raw:
-        other = instance.nudge.recipient if instance.author_id == instance.nudge.sender_id else instance.nudge.sender
-        queue_email(other, 'support_message', 'A new Hearteli support message',
-            'You have a new support message. Sign in to read it privately.',
-            key=f'support-message:{instance.pk}', path=f'/notifications/nudges/{instance.nudge_id}/', target_id=instance.nudge_id, sensitive=True)
+        recipient_name = instance.recipient.name.strip() or 'your Circle member'
+        copy_by_choice = {
+            'recipient_reported_reached_out': f"{recipient_name} says they've reached out to you.",
+            'will_check_in_later': f'{recipient_name} plans to check in.',
+            'will_give_space': f'{recipient_name} is giving you some space and is thinking of you.',
+            'cannot_help': f"{recipient_name} can't be there right now. Would you like to reach out to someone else?",
+        }
+        queue_push_notification(
+            instance.sender,
+            'acknowledgement',
+            'You have a Hearteli update',
+            'Open Hearteli to see it.',
+            key=f'ack:{instance.pk}:{instance.recipient_choice}:push',
+            path=f'/notifications/nudges/{instance.pk}/',
+            target_id=instance.pk,
+            in_app_message=copy_by_choice.get(
+                instance.recipient_choice,
+                f'{recipient_name} has responded to your Empathy Nudge.',
+            ),
+        )
 
 
 @receiver(pre_save, sender=Appointment)

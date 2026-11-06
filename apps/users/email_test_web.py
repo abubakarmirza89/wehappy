@@ -9,9 +9,11 @@ from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.core.validators import validate_email
 from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
+from .communications import EMAIL_SIGNATURE, email_signature_text
 
 logger = logging.getLogger(__name__)
 
@@ -77,10 +79,15 @@ def email_test(request):
         text = (
             "This is a test email from Hearteli.\n\n"
             "This message checks the configured SMTP server."
+            f"\n\n{email_signature_text()}"
         )
         html = (
             "<p>This is a test email from <strong>Hearteli</strong>.</p>"
             "<p>This message checks the configured SMTP server.</p>"
+            + render_to_string(
+                "emails/signature.html",
+                {"email_signature": EMAIL_SIGNATURE},
+            )
         )
         email = EmailMultiAlternatives(
             subject="Hearteli email delivery test",

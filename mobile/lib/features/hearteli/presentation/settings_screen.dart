@@ -27,7 +27,6 @@ class SettingsScreen extends StatelessWidget {
   final SessionStore sessionStore;
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Settings')),
     body: ListView(
       padding: screenPadding,
       children: [
@@ -68,7 +67,10 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => NotificationsScreen(apiClient: apiClient),
+                    builder: (_) => NotificationsScreen(
+                      apiClient: apiClient,
+                      sessionStore: sessionStore,
+                    ),
                   ),
                 ),
               ),
@@ -103,7 +105,12 @@ class SettingsScreen extends StatelessWidget {
                 subtitle: 'Find help when you need it',
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const SafetyScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => SafetyScreen(
+                      apiClient: apiClient,
+                      sessionStore: sessionStore,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -182,7 +189,6 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Privacy & Consent')),
     body: RefreshIndicator(
       onRefresh: load,
       child: ListView(
@@ -365,13 +371,13 @@ class _NotificationSettingsState extends State<NotificationSettings> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Notifications')),
     body: ListView(
       padding: screenPadding,
       children: [
         const PageIntro(
-          title: 'A gentle pace',
-          subtitle: 'Manage your email reminders and notification quiet hours.',
+          title: 'A gentle reminder, when you want one',
+          subtitle:
+              "Choose whether you'd like check-in reminders and updates from people you've connected with. You're always in control.",
         ),
         const SizedBox(height: 18),
         OutlinedButton.icon(
@@ -425,19 +431,18 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           child: Text('Reminder at ${reminderTime.format(context)}'),
         ),
         SwitchListTile(
-          title: const Text('Daily email reminder'),
-          subtitle: const Text('This controls the daily email, not push prompts.'),
+          title: const Text('Daily check-in reminder'),
+          subtitle: const Text(
+            'One reminder at your selected time. It stops for the day once you have checked in.',
+          ),
           value: reminder,
           onChanged: (v) => setState(() => reminder = v),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            'Hearteli also sends three generic push prompts at random times between 08:00 and 22:00 in your selected timezone, at least four hours apart. They continue after check-in and are not controlled by this toggle or quiet hours. Use Android notification settings to stop push prompts.',
-          ),
-        ),
         SwitchListTile(
           title: const Text('Nudge notifications'),
+          subtitle: const Text(
+            'Empathy Nudges remain available in-app when push notifications are off.',
+          ),
           value: nudge,
           onChanged: (v) => setState(() => nudge = v),
         ),
@@ -453,7 +458,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
         ),
         const Text(
-          'Quiet hours apply to email and event notifications, not the scheduled daily push prompts.',
+          'Quiet hours apply to notifications, including daily reminders. A reminder may be delayed until quiet hours end.',
         ),
         OutlinedButton(
           onPressed: () async {
@@ -488,7 +493,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
         ),
         const SizedBox(height: 10),
         const Text(
-          'These preferences are saved to your account. Automatic reminder and push delivery are not enabled yet.',
+          'Your preferences are saved to your account. Device notification permission is required for push reminders.',
           style: TextStyle(color: AppColors.neutralGrey),
         ),
       ],

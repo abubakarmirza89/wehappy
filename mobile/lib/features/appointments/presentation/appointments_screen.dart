@@ -175,7 +175,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Your appointments')),
     body: RefreshIndicator(
       onRefresh: load,
       child: ListView(
