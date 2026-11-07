@@ -134,6 +134,7 @@ class _AppShellState extends State<AppShell> {
           : InsightsScreen(
               key: ValueKey('insights-$refresh'),
               apiClient: widget.apiClient,
+              sessionStore: widget.sessionStore,
             ),
       MoreScreen(
         apiClient: widget.apiClient,
@@ -337,7 +338,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   MaterialPageRoute(
                     builder: (_) => Scaffold(
                       appBar: AppBar(title: const Text('Insights')),
-                      body: InsightsScreen(apiClient: widget.apiClient),
+                      body: InsightsScreen(
+                        apiClient: widget.apiClient,
+                        sessionStore: widget.sessionStore,
+                      ),
                     ),
                   ),
                 ),

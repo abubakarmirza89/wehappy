@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
 import 'support_screen.dart';
 
 class InsightsScreen extends StatefulWidget {
-  const InsightsScreen({super.key, required this.apiClient});
+  const InsightsScreen({
+    super.key,
+    required this.apiClient,
+    required this.sessionStore,
+  });
   final ApiClient apiClient;
+  final SessionStore sessionStore;
   @override
   State<InsightsScreen> createState() => _InsightsScreenState();
 }
@@ -232,6 +238,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                         MaterialPageRoute(
                           builder: (_) => NudgeDetail(
                             apiClient: widget.apiClient,
+                            sessionStore: widget.sessionStore,
                             id: raw['id'] as int,
                           ),
                         ),
