@@ -137,6 +137,7 @@ passenger_wsgi.py
 
 
 media/
+/staticfiles/
 
 db.sqlite3
 # Flutter source must be tracked (the generic Python lib/ rule above is broad).
@@ -148,3 +149,7 @@ db.sqlite3
 !apps/users/migrations/*.py
 !apps/tracking/migrations/
 !apps/tracking/migrations/*.py
+
+# Restricted uploads stay outside public media and source archives.
+private_credentials/
+private_sponsor_assets/

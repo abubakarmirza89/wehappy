@@ -7,7 +7,7 @@ from .models import Notification
 from apps.tracking.models import CircleConnection, EmpathyNudge
 
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 def inbox(request):
     notifications = Notification.objects.filter(recipient=request.user)[:100]
     accepted = CircleConnection.objects.filter(recipient=request.user, accepted_at__isnull=False,
@@ -17,7 +17,7 @@ def inbox(request):
     return render(request, 'work/notifications.html', {'notifications': notifications, 'nudges': nudges})
 
 
-@login_required(login_url='/work/login/')
+@login_required(login_url='/practice/login/')
 @require_http_methods(['GET', 'POST'])
 def nudge_detail(request, pk):
     accepted = CircleConnection.objects.filter(recipient=request.user, accepted_at__isnull=False,
@@ -33,4 +33,8 @@ def nudge_detail(request, pk):
             return redirect('hearteli-nudge-detail', pk=pk)
     if request.user.pk == nudge.recipient_id:
         EmpathyNudge.objects.filter(pk=pk).update(delivery_status='opened')
-    return render(request, 'work/nudge_detail.html', {'nudge': nudge})
+    sponsor=None
+    if request.user.pk==nudge.recipient_id:
+        from .monetisation import NudgeSponsorView
+        sponsor=NudgeSponsorView().get(request,pk).data
+    return render(request, 'work/nudge_detail.html', {'nudge': nudge,'sponsor':sponsor})

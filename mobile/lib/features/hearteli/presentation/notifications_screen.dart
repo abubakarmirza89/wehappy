@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/session/session_store.dart';
 import 'components.dart';
 import 'support_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key, required this.apiClient});
+  const NotificationsScreen({
+    super.key,
+    required this.apiClient,
+    required this.sessionStore,
+  });
   final ApiClient apiClient;
+  final SessionStore sessionStore;
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
@@ -53,7 +59,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Your updates')),
+    appBar: AppBar(),
     body: RefreshIndicator(
       onRefresh: load,
       child: ListView(
@@ -61,17 +67,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         padding: screenPadding,
         children: [
           const PageIntro(
-            title: 'A little connection',
-            subtitle: 'Account and support updates, in one place.',
+            title: 'Notifications',
+            subtitle: 'Important account and Circle updates, all in one place.',
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
             icon: const Icon(Icons.favorite_outline),
-            label: const Text('Open support nudges'),
+            label: const Text('View Empathy Nudges'),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => SupportInboxScreen(apiClient: widget.apiClient),
+                builder: (_) => SupportInboxScreen(
+                  apiClient: widget.apiClient,
+                  sessionStore: widget.sessionStore,
+                ),
               ),
             ),
           ),
@@ -80,7 +89,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           else if (error != null)
             StatusPanel(message: error!, action: 'Try again', onAction: load)
           else if (notifications.isEmpty)
-            const StatusPanel(message: 'No updates yet.')
+            const StatusPanel(message: 'You are all caught up.')
           else
             for (final item in notifications)
               Padding(

@@ -6,10 +6,11 @@ The email and push outbox is stored in `users.EmailDelivery`; each channel has i
 
 1. Apply all migrations with `python manage.py migrate`.
 2. Set `HEARTELI_PUBLIC_URL` to the verified public HTTPS origin. Password reset links use this trusted setting, never the incoming Host header.
-3. Configure a verified `DEFAULT_FROM_EMAIL`, SMTP host/port, username/password and TLS. Use the console or locmem backend only for development. Configure sender-domain SPF/DKIM/DMARC with the selected provider.
-4. Run Celery worker plus beat: `celery -A config worker -l INFO` and `celery -A config beat -l INFO`. The beat queues opted-in reminders and processes due delivery rows every minute. As an alternative, schedule `python manage.py process_hearteli_notifications` every minute. Choose one scheduler.
-5. For Android push, register the app in Firebase using application ID `com.hearteli.userapp` and keep the resulting `google-services.json` in `mobile/android/app/`. Enable Firebase Cloud Messaging HTTP v1. Put a Firebase service-account JSON on the backend host as a secret file and set `FIREBASE_CREDENTIALS_PATH` to its path; never use `google-services.json` as server credentials or commit/share a service-account key. Android requests notification permission after sign-in and registers the device token after permission is granted.
-6. Verify one real SMTP delivery, reset link and Android/iOS push with a test account before release. Do not send test messages to real contacts without their instruction.
+3. Configure `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, TLS/SSL, and a verified `DEFAULT_FROM_EMAIL` with credentials and sender authorized by your SMTP provider. Keep credentials in deployment secrets or the ignored local `.env`, never in source control. Configure sender-domain SPF/DKIM/DMARC with the selected provider. Set `DJANGO_EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend` only when intentionally using the console or locmem backend for local development.
+4. Set `EMAIL_TEST_RECIPIENT` to an inbox controlled by the site owner. The public `/test=email` page sends only to that fixed address, requires an explicit confirmation, and rate limits requests per client IP. It reports SMTP configuration and connection errors; check that inbox and its spam folder to confirm actual delivery. Configure a shared Django cache for reliable cooldown enforcement across multiple app workers.
+5. Password-reset emails are submitted synchronously during the reset request; an SMTP failure remains queued for the normal retry worker. Run Celery worker plus beat: `celery -A config worker -l INFO` and `celery -A config beat -l INFO`. The beat queues opted-in reminders and processes due delivery rows every minute. As an alternative, schedule `python manage.py process_hearteli_notifications` every minute. Choose one scheduler.
+6. For Android push, register the app in Firebase using application ID `com.hearteli.userapp` and keep the resulting `google-services.json` in `mobile/android/app/`. Enable Firebase Cloud Messaging HTTP v1. Put a Firebase service-account JSON on the backend host as a secret file and set `FIREBASE_CREDENTIALS_PATH` to its path; never use `google-services.json` as server credentials or commit/share a service-account key. Android requests notification permission after sign-in and registers the device token after permission is granted.
+7. Verify one real SMTP delivery, reset link and Android/iOS push with a test account before release. Do not send test messages to real contacts without their instruction.
 
 ## Events
 
@@ -35,9 +36,9 @@ Optional email notifications respect email opt-out, nudge preferences and quiet 
 
 ## Meaning of status
 
-`pending`/`retry` means awaiting processing; `sent` means SMTP or FCM accepted the submission. It does **not** mean inbox/device delivery or that a human saw it. A recipient opening the authenticated nudge sets `opened`. An acknowledgement remains separate from actual support outcome. Provider bounce/delivery webhooks are not integrated yet.
+`pending`/`retry` means awaiting processing; `sent` means the SMTP server or FCM accepted the submission. It does **not** mean inbox/device delivery or that a human saw it. A recipient opening the authenticated nudge sets `opened`. An acknowledgement remains separate from actual support outcome. Provider bounce/delivery webhooks are not integrated yet.
 
-Failures retry up to five times with backoff. No credentials, provider error text, chat body or private journal content is logged to the outbox. A stable Message-ID helps email deduplication. SMTP cannot guarantee exactly-once delivery if a worker dies after server acceptance and before committing the local status. Run a transactional production database; SQLite does not provide the same row locking guarantees.
+Failures retry up to five times with backoff. No credentials, provider error text, chat body or private journal content is logged to the outbox. A stable Message-ID helps identify retries, but SMTP cannot guarantee exactly-once delivery if a worker fails after server acceptance. Run a transactional production database; SQLite does not provide the same row locking guarantees.
 
 Inspect delivery metadata in Django admin. The admin view does not expose reset-link tokens or email bodies. Restrict admin access and adopt an operational retention policy for sent rows. Configure monitoring for failed and persistently unconfigured push rows.
 

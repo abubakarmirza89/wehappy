@@ -7,6 +7,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--limit', type=int, default=100)
     def handle(self, *args, **options):
+        from apps.users.commercial_tasks import refresh_commercial_state
+        refresh_commercial_state()
         queue_due_reminders()
         queue_due_push_reminders()
         self.stdout.write(str(dispatch_email_batch(limit=max(1, min(options['limit'], 1000)))))

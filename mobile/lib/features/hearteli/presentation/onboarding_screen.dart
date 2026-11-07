@@ -23,14 +23,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   int step = 0;
   bool demoSharing = false;
   static const headlines = [
-    'Some days, ‘I’m okay’ is a lie.',
-    'Log how you feel. You choose who can know.',
-    'They don’t just get a notification. They get a way in.',
+    'Some days are harder to put into words.',
+    'Check in with yourself. Choose what to share.',
+    'A little understanding can make a difference.',
   ];
   static const descriptions = [
-    'The people who love you would show up in a heartbeat. If only they knew.',
-    'Pick your person. Decide what they see and when. Turn it off anytime. Nothing is shared without you.',
-    'A message. Your favourite coffee on the way. Time blocked out tonight. Hearteli turns knowing into showing up.',
+    'You deserve support, even when it is hard to ask for it.',
+    'Your check-ins are private. Choose who to tell, what to share and when.',
+    'A kind message or a quiet moment together can help someone feel less alone.',
   ];
 
   @override
@@ -191,11 +191,11 @@ class _PitchVisual extends StatelessWidget {
   ]);
 
   Widget _payoff() => const Column(children: [
-    _GestureNote(icon: Icons.chat_bubble_outline, text: 'On my way. Coffee?'),
+    _GestureNote(icon: Icons.chat_bubble_outline, text: 'I’m here if you want to talk.'),
     SizedBox(height: 14),
-    Icon(Icons.coffee_outlined, size: 74, color: AppColors.coral),
+    Icon(Icons.favorite_outline, size: 74, color: AppColors.coral),
     SizedBox(height: 14),
-    _GestureNote(icon: Icons.schedule, text: 'Tonight, I’ve made time for you.'),
+    _GestureNote(icon: Icons.schedule, text: 'No pressure. I can make time when you are ready.'),
   ]);
 }
 
@@ -272,7 +272,6 @@ class _FirstRunSetupState extends State<FirstRunSetup> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Welcome to Hearteli')),
     body: SafeArea(
       child: ListView(
         padding: screenPadding,
@@ -287,8 +286,17 @@ class _FirstRunSetupState extends State<FirstRunSetup> {
           const SizedBox(height: 14),
           if (step == 0) ...[
             const PageIntro(
-              title: 'What brings you here?',
-              subtitle: 'Choose any that fit. These choices only tailor the app; they do not share information.',
+              title: 'Welcome to Hearteli ❤️',
+              subtitle:
+                  'A little more understanding starts here. Take your time, settle in, and make this space your own.',
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'What brings you here?',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+            ),
+            const Text(
+              'Choose any that fit. These choices only tailor the app; they do not share information.',
             ),
             const SizedBox(height: 22),
             for (final label in [
@@ -344,8 +352,9 @@ class _FirstRunSetupState extends State<FirstRunSetup> {
             ),
           ] else ...[
             const PageIntro(
-              title: 'Your Circle',
-              subtitle: 'Invite someone you trust, or skip for now. No check-in is shared with an invite.',
+              title: "Who's in your corner?",
+              subtitle:
+                  'Invite someone you trust to be there for the moments when a little understanding matters most.',
             ),
             const SizedBox(height: 22),
             TextField(
@@ -370,7 +379,7 @@ class _FirstRunSetupState extends State<FirstRunSetup> {
                   ? 'Continue to Hearteli'
                   : step == 1
                   ? 'I understand'
-                  : 'Continue',
+                  : 'Get started',
             ),
           ),
           if (step == 2)

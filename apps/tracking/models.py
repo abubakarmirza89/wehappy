@@ -340,6 +340,7 @@ class CircleConnection(models.Model):
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_connections')
     relationship = models.CharField(max_length=40, default='Friend')
     accepted_at = models.DateTimeField(null=True, blank=True)
+    declined_at = models.DateTimeField(null=True, blank=True)
     may_receive_nudges = models.BooleanField(default=False)
     may_receive_preference = models.BooleanField(default=False)
     ask_on_pattern = models.BooleanField(default=False)
@@ -350,6 +351,7 @@ class CircleConnection(models.Model):
 
 
 class EmpathyNudge(models.Model):
+    support_context=models.CharField(max_length=12,default='unknown',choices=[('unknown','Unknown'),('ordinary','Ordinary support'),('safety','Safety pathway')])
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_sent')
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_received')
     check_in = models.ForeignKey(MoodCheckIn, on_delete=models.CASCADE, related_name='hearteli_nudges')
@@ -359,6 +361,12 @@ class EmpathyNudge(models.Model):
     idempotency_key = models.UUIDField(null=True, blank=True)
     delivery_status = models.CharField(max_length=20, choices=[('created', 'Created'), ('queued', 'Queued'), ('sent', 'Sent'), ('failed', 'Failed'), ('delivered', 'Delivered'), ('opened', 'Opened')], default='created')
     status = models.CharField(max_length=20, choices=[('sent','Sent'),('acknowledged','Acknowledged'),('cannot_help','Cannot help')], default='sent')
+    recipient_choice = models.CharField(max_length=40, blank=True, choices=[
+        ('recipient_reported_reached_out', "I've reached out"),
+        ('will_check_in_later', "I'll check in later"),
+        ('will_give_space', "I'll give space"),
+        ('cannot_help', "I can't right now"),
+    ])
     created_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(null=True, blank=True)
 
@@ -391,6 +399,7 @@ class HearteliPreferences(models.Model):
     quiet_end = models.TimeField(null=True, blank=True)
     rich_lock_preview = models.BooleanField(default=False)
     email_notifications = models.BooleanField(default=True)
+    sponsor_opt_in = models.BooleanField(default=False)
     timezone_name = models.CharField(max_length=64, default="UTC")
     reminder_time = models.TimeField(default="09:00")
 

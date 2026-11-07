@@ -4,7 +4,9 @@ Hearteli is a private check-in and consent based support app. This branch combin
 
 ## Local backend
 
-Use Python 3.11 or later and install `requirements.txt` in a virtual environment. Configure `.env` with a unique `DJANGO_SECRET_KEY`, `DJANGO_ADMIN_URL=admin/`, `DJANGO_DEBUG=True`, and `DB_ENGINE=sqlite` for local development. The existing Stripe settings also require test keys (`STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`). Run `python manage.py migrate` then `python manage.py runserver`. The API is at `/api/`, the workplace console at `/work/`, and API schema at `/api/docs/`.
+Use Python 3.11 or later and install `requirements.txt` in a virtual environment. Configure `.env` with a unique `DJANGO_SECRET_KEY`, `DJANGO_ADMIN_URL=admin/`, `DJANGO_DEBUG=True`, and `DB_ENGINE=sqlite` for local development. Transactional email uses SMTP; configure `EMAIL_HOST`, `EMAIL_PORT`, TLS/SSL, credentials, and `DEFAULT_FROM_EMAIL`. Stripe is used for individual therapist appointment checkout; configure `STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` only when enabling those payments. Organisation subscriptions are activated and renewed manually by Hearteli administrators; the workplace console does not start online checkout or recurring charges. Run `python manage.py migrate` then `python manage.py runserver`. The API is at `/api/`, the workplace console at `/work/`, and API schema at `/api/docs/`.
+
+The public test page at `/test=email` sends only to the fixed `EMAIL_TEST_RECIPIENT` configured on the server; it does not let visitors choose arbitrary recipients.
 
 For an existing database created before migrations were tracked, back up the database, compare the schema, and baseline only matching initial tables using Django's `migrate --fake-initial` before applying tracking 0003–0005. Do not fake the later migrations. New databases use ordinary `migrate`.
 
@@ -23,4 +25,11 @@ Run `python manage.py check` and `python manage.py test apps.tracking.tests.test
 Before production: run Flutter dependency resolution, fix the legacy analyzer issues, run widget/device tests on iOS and Android, inspect each screen at small and large text sizes, replace development app identifiers and configure release signing, configure a production HTTPS API and deployment secrets, validate password reset email delivery, integrate workplace billing or remove the office plan entitlement, add the Firebase Admin service-account secret to the backend, keep the notification worker and scheduler running, and verify real-device push behavior. Android app-closed delivery is wired through FCM; production pushes require those backend credentials and processes. Do not describe this branch as a signed, store-ready mobile release until these gates pass.
 
 
-See [the 43-screen implementation audit](docs/implementation-audit.md) for code present versus partial features, the image inventory and document acceptance coverage. See [notification operations](docs/notification-operations.md) to configure transactional email, FCM, workers and timezone-aware reminders. The audit explicitly lists remaining workspace consent/analytics, therapist calendar, safety-resource, analytics and release QA work.
+See [the 43-screen implementation audit](docs/implementation-audit.md) for code present versus partial features, the image inventory and document acceptance coverage. See [notification operations](docs/notification-operations.md) to configure transactional email, optional FCM, workers and timezone-aware reminders. The audit explicitly lists remaining workspace consent/analytics, therapist calendar, safety-resource, analytics and release QA work.
+
+
+## Therapist practice and business billing update
+
+See [the current monetisation and marketplace handoff](docs/monetisation-marketplace-v1.1-v1.2.md) for the supplied November requirements, migration sequence, feature inventory and outstanding release checks. Defaults are 15% platform-acquired / 5% therapist-referred commission, administrator-approved session options, separate credential/activity/sponsorship state, manually managed organisation subscriptions and first-party sponsored placements. Individual accounts remain free.
+
+Backend regressions and Dart parser/format checks are documented in the handoff. Native builds, staging financial integration and policy approval remain release work.

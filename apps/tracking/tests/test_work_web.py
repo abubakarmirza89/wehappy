@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from apps.users.tests.billing_helpers import active_subscription
 
 from apps.tracking.models import Workspace, WorkspaceMembership, WorkspaceResource, WorkspaceRoleAudit
 
@@ -13,6 +14,7 @@ class WorkConsoleTests(TestCase):
                                                  phone_number='+923001234561', password='StrongPass123')
         self.workspace = Workspace.objects.create(owner=self.owner, name='Office',
             workspace_type=Workspace.WORKSPACE_TYPE_OFFICE)
+        active_subscription(self.workspace)
         self.member = WorkspaceMembership.objects.create(workspace=self.workspace, user=self.employee,
             role=WorkspaceMembership.ROLE_EMPLOYEE, status=WorkspaceMembership.STATUS_APPROVED)
 
@@ -31,7 +33,7 @@ class WorkConsoleTests(TestCase):
         self.member.save(update_fields=['role'])
         self.client.force_login(self.employee)
         response = self.client.get(f'/work/{self.workspace.pk}/')
-        self.assertContains(response, 'Team Wellbeing')
+        self.assertContains(response, 'Overview')
         self.assertNotContains(response, 'Invite a member')
 
     def test_new_owner_can_register_and_create_workplace(self):
@@ -41,6 +43,11 @@ class WorkConsoleTests(TestCase):
             'confirm_password': 'StrongerPass123!'})
         self.assertRedirects(response, '/work/')
         response = self.client.post('/work/new/', {'name': 'New Team'})
+        self.assertEqual(response.status_code,403)
+        self.client.session.flush()
+        new_owner = get_user_model().objects.get(email='new-owner@hearteli.test');new_owner.is_staff=True;new_owner.save()
+        self.client.force_login(new_owner)
+        response=self.client.post('/work/new/',{'name':'New Team'})
         workspace = Workspace.objects.get(name='New Team')
         self.assertRedirects(response, f'/work/{workspace.pk}/')
         self.assertTrue(WorkspaceMembership.objects.filter(workspace=workspace,

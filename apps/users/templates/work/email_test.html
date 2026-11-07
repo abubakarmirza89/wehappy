@@ -1,0 +1,27 @@
+{% extends "work/base.html" %}
+{% block title %}Email delivery test | Hearteli{% endblock %}
+{% block content %}
+<section class="auth-layout">
+  <div>
+    <span class="eyebrow">Email setup</span>
+    <h1>Test email delivery</h1>
+    <p>Send a test message through the SMTP server configured for this site.</p>
+    <p>The destination is fixed in the server environment. Visitors cannot enter another recipient address.</p>
+    <div class="quote">A successful response means the SMTP server accepted the message, not that it reached the inbox.</div>
+  </div>
+  <div class="card auth-card">
+    <h2>Send a test email</h2>
+    <p class="muted">This public page can send only to the single test inbox configured by the site owner.</p>
+    {% for message in messages %}
+      <p class="{% if message.tags == 'error' %}error{% else %}pill{% endif %}" role="status">{{ message }}</p>
+    {% endfor %}
+    <form method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      <label for="{{ form.confirm.id_for_label }}">{{ form.confirm }} {{ form.confirm.label }}</label>
+      {% for error in form.confirm.errors %}<p class="error" role="alert">{{ error }}</p>{% endfor %}
+      <button class="full" type="submit">Send test email</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

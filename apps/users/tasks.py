@@ -4,6 +4,8 @@ from .reminders import queue_due_push_reminders, queue_due_reminders
 
 @shared_task
 def process_notifications():
+    from .commercial_tasks import refresh_commercial_state
+    refresh_commercial_state()
     queue_due_reminders()
     queue_due_push_reminders()
     return dispatch_email_batch()

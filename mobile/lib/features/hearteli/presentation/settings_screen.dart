@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../therapist/presentation/practice_shell.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -25,11 +27,21 @@ class SettingsScreen extends StatelessWidget {
   final SessionStore sessionStore;
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Settings')),
     body: ListView(
       padding: screenPadding,
       children: [
         const PageIntro(title: 'Your space, your choices'),
+        if (!sessionStore.isTherapist)
+          OutlinedButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    TherapistApplicationScreen(apiClient: apiClient),
+              ),
+            ),
+            child: const Text('Apply as a therapist'),
+          ),
         const SizedBox(height: 22),
         HearteliCard(
           child: Column(
@@ -55,7 +67,10 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => NotificationsScreen(apiClient: apiClient),
+                    builder: (_) => NotificationsScreen(
+                      apiClient: apiClient,
+                      sessionStore: sessionStore,
+                    ),
                   ),
                 ),
               ),
@@ -90,7 +105,12 @@ class SettingsScreen extends StatelessWidget {
                 subtitle: 'Find help when you need it',
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const SafetyScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => SafetyScreen(
+                      apiClient: apiClient,
+                      sessionStore: sessionStore,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -169,7 +189,6 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Privacy & Consent')),
     body: RefreshIndicator(
       onRefresh: load,
       child: ListView(
@@ -275,7 +294,8 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       nudge = true,
       rich = false,
       busy = false,
-      emailNotifications = true;
+      emailNotifications = true,
+      sponsorOptIn = false;
   String timezoneName = "UTC";
   TimeOfDay reminderTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay? start, end;
@@ -307,6 +327,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           nudge = data['nudge_notifications'] != false;
           rich = data['rich_lock_preview'] == true;
           emailNotifications = data['email_notifications'] != false;
+          sponsorOptIn = data['sponsor_opt_in'] == true;
           timezoneName = '${data['timezone_name'] ?? 'UTC'}';
           reminderTime =
               parse(data['reminder_time']) ??
@@ -327,6 +348,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
         body: {
           'reminder_enabled': reminder,
           'email_notifications': emailNotifications,
+          'sponsor_opt_in': sponsorOptIn,
           'timezone_name': timezoneName,
           'reminder_time': format(reminderTime),
           'nudge_notifications': nudge,
@@ -349,13 +371,13 @@ class _NotificationSettingsState extends State<NotificationSettings> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Notifications')),
     body: ListView(
       padding: screenPadding,
       children: [
         const PageIntro(
-          title: 'A gentle pace',
-          subtitle: 'Manage your email reminders and notification quiet hours.',
+          title: 'A gentle reminder, when you want one',
+          subtitle:
+              "Choose whether you'd like check-in reminders and updates from people you've connected with. You're always in control.",
         ),
         const SizedBox(height: 18),
         OutlinedButton.icon(
@@ -370,6 +392,14 @@ class _NotificationSettingsState extends State<NotificationSettings> {
                 enabled ? 'Device notifications enabled.' : 'Notifications could not be enabled. Check device permission and Firebase setup.',
               );
           },
+        ),
+        SwitchListTile(
+          title: const Text('Optional sponsor acknowledgements'),
+          subtitle: const Text(
+            'Only on eligible ordinary support updates. No targeting based on your moods or private messages.',
+          ),
+          value: sponsorOptIn,
+          onChanged: (v) => setState(() => sponsorOptIn = v),
         ),
         SwitchListTile(
           title: const Text('Email notifications'),
@@ -401,19 +431,18 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           child: Text('Reminder at ${reminderTime.format(context)}'),
         ),
         SwitchListTile(
-          title: const Text('Daily email reminder'),
-          subtitle: const Text('This controls the daily email, not push prompts.'),
+          title: const Text('Daily check-in reminder'),
+          subtitle: const Text(
+            'One reminder at your selected time. It stops for the day once you have checked in.',
+          ),
           value: reminder,
           onChanged: (v) => setState(() => reminder = v),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            'Hearteli also sends three generic push prompts at random times between 08:00 and 22:00 in your selected timezone, at least four hours apart. They continue after check-in and are not controlled by this toggle or quiet hours. Use Android notification settings to stop push prompts.',
-          ),
-        ),
         SwitchListTile(
           title: const Text('Nudge notifications'),
+          subtitle: const Text(
+            'Empathy Nudges remain available in-app when push notifications are off.',
+          ),
           value: nudge,
           onChanged: (v) => setState(() => nudge = v),
         ),
@@ -429,7 +458,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
         ),
         const Text(
-          'Quiet hours apply to email and event notifications, not the scheduled daily push prompts.',
+          'Quiet hours apply to notifications, including daily reminders. A reminder may be delayed until quiet hours end.',
         ),
         OutlinedButton(
           onPressed: () async {
@@ -464,7 +493,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
         ),
         const SizedBox(height: 10),
         const Text(
-          'These preferences are saved to your account. Automatic reminder and push delivery are not enabled yet.',
+          'Your preferences are saved to your account. Device notification permission is required for push reminders.',
           style: TextStyle(color: AppColors.neutralGrey),
         ),
       ],

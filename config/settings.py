@@ -1,5 +1,4 @@
 
-from decimal import Decimal
 from pathlib import Path
 import environ
 
@@ -83,6 +82,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.tracking.subscriptions.SubscriptionGateMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -182,7 +182,8 @@ X_FRAME_OPTIONS = "DENY"
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_ROOT = str(APPS_DIR / "media")
 # https://docs.djangoproject.com/en/dev/ref/settings/#media-url
@@ -197,13 +198,15 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 EMAIL_BACKEND = env(
     "DJANGO_EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend",
 )
-EMAIL_TIMEOUT = 5
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=15)
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
-EMAIL_PORT = env.int("EMAIL_PORT", default=25)
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_TEST_RECIPIENT = env("EMAIL_TEST_RECIPIENT", default="")
+EMAIL_TEST_COOLDOWN_SECONDS = env.int("EMAIL_TEST_COOLDOWN_SECONDS", default=60)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@hearteli.local")
 
 
@@ -244,10 +247,10 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
 
-STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY")
-STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
-STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
-THERAPIST_COMMISSION_PERCENT = Decimal(env("THERAPIST_COMMISSION_PERCENT", default="20"))
+STRIPE_PUBLIC_KEY = env("STRIPE_PUBLIC_KEY", default="")
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+# Commission percentages live in the administrator-controlled MarketplacePolicy.
 
 # Firebase Cloud Messaging is optional in local development. Set these values
 # in the environment to enable server-side push delivery.
@@ -288,3 +291,5 @@ TWILIO_PHONE_NUMBER = env("TWILIO_PHONE_NUMBER", default="")
 HEARTELI_PUBLIC_URL = env("HEARTELI_PUBLIC_URL", default="http://localhost:8000")
 HEARTELI_EMAIL_MESSAGE_DOMAIN = env("HEARTELI_EMAIL_MESSAGE_DOMAIN", default="hearteli.local")
 PASSWORD_RESET_TIMEOUT = 3600
+
+HEARTELI_CURRENCY = env("HEARTELI_CURRENCY", default="usd").lower()

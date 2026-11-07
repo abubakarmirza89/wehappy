@@ -12,7 +12,7 @@ from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.response import Response
 
 from .models import (CircleConnection, ConsentEvent, EmpathyNudge,
-                     HearteliPreferences, MoodCheckIn, NudgeMessage, SupportOutcome, TherapistContextGrant)
+                     HearteliPreferences, MoodCheckIn, SupportOutcome, TherapistContextGrant)
 from apps.users.models import User
 
 
@@ -26,8 +26,15 @@ class ConnectionSerializer(serializers.ModelSerializer):
         model = CircleConnection
         fields = ['id', 'owner', 'owner_name', 'recipient', 'recipient_name',
                   'recipient_email', 'recipient_email_input', 'relationship',
-                  'accepted_at', 'may_receive_nudges', 'may_receive_preference', 'ask_on_pattern']
-        read_only_fields = ['owner', 'recipient', 'accepted_at', 'may_receive_nudges']
+                  'accepted_at', 'declined_at', 'may_receive_nudges',
+                  'may_receive_preference', 'ask_on_pattern']
+        read_only_fields = [
+            'owner',
+            'recipient',
+            'accepted_at',
+            'declined_at',
+            'may_receive_nudges',
+        ]
 
     def create(self, validated_data):
         email = validated_data.pop('recipient_email_input', None)
@@ -67,9 +74,16 @@ class ConnectionViewSet(viewsets.ModelViewSet):
             if 'may_receive_nudges' in request.data and type(request.data['may_receive_nudges']) is not bool:
                 raise ValidationError({'may_receive_nudges': 'Must be boolean.'})
             if request.data.get('accept') is True:
+                if connection.declined_at is not None:
+                    raise ValidationError({'accept': 'This invitation is no longer available.'})
                 connection.accepted_at = timezone.now()
             elif request.data.get('accept') is False:
+                if connection.accepted_at is not None:
+                    raise ValidationError({'accept': 'An accepted invitation cannot be declined.'})
+                if connection.declined_at is not None:
+                    raise ValidationError({'accept': 'This invitation is no longer available.'})
                 connection.accepted_at = None
+                connection.declined_at = timezone.now()
                 connection.may_receive_nudges = False
             if 'may_receive_nudges' in request.data:
                 connection.may_receive_nudges = request.data['may_receive_nudges'] and connection.accepted_at is not None
@@ -130,9 +144,10 @@ class NudgeSerializer(serializers.ModelSerializer):
         model = EmpathyNudge
         fields = ['id', 'sender', 'sender_name', 'recipient', 'recipient_name',
                   'check_in', 'message', 'support_preference', 'idempotency_key',
-                  'delivery_status', 'status', 'created_at', 'responded_at', 'viewer_is_recipient']
+                  'support_context', 'delivery_status', 'status', 'recipient_choice',
+                  'created_at', 'responded_at', 'viewer_is_recipient']
         read_only_fields = ['sender', 'sender_name', 'recipient_name', 'delivery_status',
-                            'status', 'created_at', 'responded_at']
+                            'status', 'recipient_choice', 'created_at', 'responded_at']
 
     def validate(self, attrs):
         user = self.context['request'].user
@@ -148,25 +163,6 @@ class NudgeSerializer(serializers.ModelSerializer):
         if not attrs.get('message', '').strip():
             raise ValidationError({'message': 'Write a short message to preview.'})
         return attrs
-
-
-class NudgeMessageSerializer(serializers.ModelSerializer):
-    author_name = serializers.CharField(source='author.name', read_only=True)
-    is_mine = serializers.SerializerMethodField()
-
-    class Meta:
-        model = NudgeMessage
-        fields = ['id', 'author_name', 'is_mine', 'body', 'created_at']
-        read_only_fields = ['id', 'author_name', 'is_mine', 'created_at']
-
-    def get_is_mine(self, obj):
-        return obj.author_id == self.context['request'].user.id
-
-    def validate_body(self, value):
-        value = value.strip()
-        if not value:
-            raise ValidationError('Write a message before sending.')
-        return value
 
 
 class NudgeViewSet(viewsets.ModelViewSet):
@@ -222,29 +218,31 @@ class NudgeViewSet(viewsets.ModelViewSet):
             nudge.save(update_fields=['delivery_status'])
         return Response(self.get_serializer(nudge).data)
 
-    @action(detail=True, methods=['get', 'post'])
-    def messages(self, request, pk=None):
-        nudge = self.get_object()
-        if request.method == 'GET':
-            return Response(NudgeMessageSerializer(nudge.conversation_messages.select_related('author'),
-                            many=True, context={'request': request}).data)
-        serializer = NudgeMessageSerializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        serializer.save(nudge=nudge, author=request.user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
     @action(detail=True, methods=['post'])
     def respond(self, request, pk=None):
         nudge = self.get_object()
         if nudge.recipient_id != request.user.id:
             raise PermissionDenied('Only the recipient can respond.')
-        if request.data.get('status') not in ('acknowledged', 'cannot_help'):
-            raise ValidationError({'status': 'Choose acknowledged or cannot_help.'})
+        choice = request.data.get('choice')
+        if choice is None:
+            choice = {
+                'acknowledged': 'recipient_reported_reached_out',
+                'cannot_help': 'cannot_help',
+            }.get(request.data.get('status'))
+        choices = {
+            'recipient_reported_reached_out',
+            'will_check_in_later',
+            'will_give_space',
+            'cannot_help',
+        }
+        if choice not in choices:
+            raise ValidationError({'choice': 'Choose one of the available responses.'})
         if nudge.status != 'sent':
-            raise ValidationError({'status': 'Already responded.'})
-        nudge.status = request.data['status']
+            raise ValidationError({'choice': 'Already responded.'})
+        nudge.recipient_choice = choice
+        nudge.status = 'cannot_help' if choice == 'cannot_help' else 'acknowledged'
         nudge.responded_at = timezone.now()
-        nudge.save(update_fields=['status', 'responded_at'])
+        nudge.save(update_fields=['status', 'recipient_choice', 'responded_at'])
         return Response(self.get_serializer(nudge).data)
 
 
@@ -281,7 +279,7 @@ class PreferencesSerializer(serializers.ModelSerializer):
     class Meta:
         model = HearteliPreferences
         fields = ['use_contexts', 'reminder_enabled', 'nudge_notifications', 'quiet_start',
-                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'reminder_time']
+                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'reminder_time', 'sponsor_opt_in']
 
     def validate_timezone_name(self, value):
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError

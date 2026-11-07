@@ -49,12 +49,12 @@ class _CircleScreenState extends State<CircleScreen> {
       context: context,
       builder: (dialog) => StatefulBuilder(
         builder: (dialog, update) => AlertDialog(
-          title: const Text('Add someone'),
+          title: const Text("Who's in your corner?"),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'They will only receive an invitation. Your check-ins remain private.',
+                'Invite someone you trust to be there for the moments when a little understanding matters most.',
               ),
               const SizedBox(height: 16),
               TextField(
@@ -105,7 +105,7 @@ class _CircleScreenState extends State<CircleScreen> {
                   if (dialog.mounted) showCalmMessage(dialog, '$e');
                 }
               },
-              child: const Text('Send invite'),
+              child: const Text('Invite someone'),
             ),
           ],
         ),
@@ -130,14 +130,14 @@ class _CircleScreenState extends State<CircleScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
-        title: const Text('Remove from Circle?'),
+        title: const Text('Remove this person?'),
         content: const Text(
-          'Future access to your nudges will stop immediately.',
+          'They will no longer be able to receive new Empathy Nudges from you.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialog, false),
-            child: const Text('Keep'),
+            child: const Text('Keep in Circle'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialog, true),
@@ -174,11 +174,10 @@ class _CircleScreenState extends State<CircleScreen> {
     child: ListView(
       padding: screenPadding,
       children: [
-        const BrandLogo(height: 38),
-        const SizedBox(height: 26),
+        const SizedBox(height: 6),
         const PageIntro(
           title: 'Your Circle',
-          subtitle: 'People who care about you.',
+          subtitle: 'The people you choose to keep close.',
         ),
         const SizedBox(height: 14),
         if (loading)
@@ -192,7 +191,7 @@ class _CircleScreenState extends State<CircleScreen> {
           StatusPanel(message: error!, action: 'Retry', onAction: load)
         else if (connections.isEmpty)
           const StatusPanel(
-            message: 'Your Circle is yours to build. Check-ins work privately even without adding someone.',
+            message: 'Your Circle is yours to build. Your check-ins remain private whether or not you add someone.',
             icon: Icons.people_outline,
           )
         else
@@ -206,7 +205,9 @@ class _CircleScreenState extends State<CircleScreen> {
                       ? '${raw['recipient_name']}'
                       : '${raw['owner_name']}',
                   subtitle:
-                      '${raw['relationship']} · ${raw['accepted_at'] == null
+                      '${raw['relationship']} · ${raw['declined_at'] != null
+                          ? 'Invitation no longer available'
+                          : raw['accepted_at'] == null
                           ? 'Pending'
                           : raw['may_receive_nudges'] == true
                           ? 'Nudges enabled'
@@ -251,12 +252,17 @@ class _CircleDetailState extends State<CircleDetail> {
   late bool nudge = widget.person['may_receive_nudges'] == true;
   late bool preference = widget.person['may_receive_preference'] == true;
   late bool pattern = widget.person['ask_on_pattern'] == true;
+  late bool declined = widget.person['declined_at'] != null;
   bool busy = false;
   Future<bool> change(Map<String, dynamic> value) async {
     setState(() => busy = true);
     try {
       await widget.onUpdate(value);
-      if (mounted && value.containsKey('accept')) Navigator.pop(context);
+      if (mounted && value['accept'] == true) {
+        Navigator.pop(context);
+      } else if (mounted && value['accept'] == false) {
+        setState(() => declined = true);
+      }
       return true;
     } catch (e) {
       if (mounted) showCalmMessage(context, '$e');
@@ -268,12 +274,13 @@ class _CircleDetailState extends State<CircleDetail> {
 
   @override
   Widget build(BuildContext context) {
-    final pending = widget.person['accepted_at'] == null;
+    final pending =
+        widget.person['accepted_at'] == null && !declined;
     final personName = widget.isOwner
         ? '${widget.person['recipient_name']}'
         : '${widget.person['owner_name']}';
     return Scaffold(
-      appBar: AppBar(title: const Text('Circle person')),
+      appBar: AppBar(),
       body: ListView(
         padding: screenPadding,
         children: [
@@ -295,11 +302,38 @@ class _CircleDetailState extends State<CircleDetail> {
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           Text(
-            '${widget.person['relationship']} · ${pending ? 'Invitation pending' : 'Connected'}',
+            '${widget.person['relationship']} · ${declined
+                ? 'Invitation no longer available'
+                : pending
+                ? 'Invitation pending'
+                : 'Connected'}',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 22),
-          if (!widget.isOwner && pending) ...[
+          if (declined)
+            ...[
+              StatusPanel(
+                message: widget.isOwner
+                    ? 'Invitation no longer available.'
+                    : 'No problem. We won’t notify the person who invited you. You can choose whether to connect in the future.',
+              ),
+              if (!widget.isOwner)
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Done'),
+                ),
+              if (widget.isOwner)
+                TextButton(
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          await widget.onRemove();
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                  child: const Text('Remove unavailable invitation'),
+                ),
+            ]
+          else if (!widget.isOwner && pending) ...[
             const StatusPanel(
               message: 'Accepting does not share any history or private check-ins with you.',
             ),

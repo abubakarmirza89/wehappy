@@ -6,3 +6,6 @@
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}.js-motion .reveal{opacity:1;transform:none}}
 
 .icon-box.blue{background:var(--blue);color:#619ce7}.icon-box.mint{background:var(--mint);color:#21b887}
+
+.journey-card,.mini-dashboard{margin:6px}
+@media(max-width:760px){.journey-card,.mini-dashboard{margin:4px}}

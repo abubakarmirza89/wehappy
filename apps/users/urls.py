@@ -1,3 +1,7 @@
+from .marketplace import MarketplaceSearchView,OfferingView,ConfirmActivityView
+from .monetisation import NudgeSponsorView,SponsorEventView,RedeemOrganisationInvite
+from .reviews import TherapistReviewsView,ReportReviewView
+from .practice import ApplicationView, PracticeProfileView, AppointmentChatView, AppointmentCheckoutView
 from django.urls import path
 from apps.users.views import (
     CreateAppointmentViewSet,
@@ -14,12 +18,24 @@ from apps.users.views import (
     WithdrawalRequestView,
 )
 
-from .webhooks import stripe_webhook
+from .billing import webhook as stripe_webhook
 
 app_name = "users"
 
 
 urlpatterns = [
+    path('reviews/<int:pk>/report/',ReportReviewView.as_view()),
+    path('marketplace/search/',MarketplaceSearchView.as_view()),
+    path('therapist/offerings/',OfferingView.as_view()),
+    path('therapist/confirm-activity/',ConfirmActivityView.as_view()),
+    path('nudges/<int:pk>/sponsor/',NudgeSponsorView.as_view()),
+    path('sponsor-events/',SponsorEventView.as_view()),
+    path('organisation-invitations/redeem/',RedeemOrganisationInvite.as_view()),
+    path('therapists/<int:pk>/reviews/',TherapistReviewsView.as_view()),
+    path('appointment/<int:pk>/checkout/',AppointmentCheckoutView.as_view()),
+    path('therapist/application/', ApplicationView.as_view()),
+    path('therapist/profile/', PracticeProfileView.as_view()),
+    path('appointment/<int:pk>/messages/', AppointmentChatView.as_view()),
     path('device-token/', DeviceTokenView.as_view(), name='device-token'),
     path('therapist/dashboard/', TherapistDashboardView.as_view(), name='therapist-dashboard'),
     path('therapist/settings/', TherapistSettingsView.as_view(), name='therapist-settings'),

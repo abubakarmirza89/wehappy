@@ -1,5 +1,7 @@
 # Hearteli implementation audit — 2 October 2026
 
+Historical audit. For the 4 November therapist/practice and business subscription implementation, see `docs/practice-and-business-billing.md`; that update supersedes the related gaps below.
+
 Reviewed both supplied documents: **Hearteli Product UX Architecture v1.0** and **Hearteli Production Screen Specification v1.0** against the current backend, Flutter code, web templates and tracked assets on `feature/hearteli-v1`.
 
 **Release conclusion: the complete document-defined product is not yet production-ready.** Core support-loop code exists and the backend acceptance suite passes, but a code file or screen name is not proof of a complete screen, every edge state, pixel fidelity or real provider delivery. All Flutter screens still need build/device/accessibility and screenshot comparison QA. Earlier claims of “same to same” would not be substantiated by these checks.
@@ -114,7 +116,7 @@ Only **one new lifestyle photo** was generated. The second placement is a reuse,
 5. Therapist provider calendar, verified profiles, filters, duration/availability, cancellation terms and approved payment/refund policy. No real payment automation has been verified.
 6. Maintained jurisdiction-specific safety resources with offline fallback and explicit urgent-path diversion.
 7. Complete privacy-safe analytics event schema, activation/support KPI calculations, exhaustive data export/retention and admin least-privilege/billing/support workflows. The legacy repo still contains score/AI-related modules outside the new Hearteli path; they require a separate removal/migration decision before release.
-8. Configure verified SMTP/sender DNS, production origin, background workers and native Firebase files, then run real test-account delivery checks. Provider credentials and hosting/native configuration were not supplied. Do not paste account passwords into chat.
+8. Configure SMTP credentials and an authorized sender address, plus production origin, background workers and native Firebase files; then run real test-account delivery checks. Provider credentials and hosting/native configuration were not supplied. Do not paste account passwords into chat.
 
 ## Verification
 

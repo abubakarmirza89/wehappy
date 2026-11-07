@@ -1,5 +1,6 @@
 """A privacy-constrained, server-rendered workplace console."""
 from django import forms
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
@@ -91,6 +92,8 @@ def index(request):
 @login_required(login_url='/work/login/')
 @require_POST
 def create_workspace(request):
+    if not request.user.is_staff:
+        return HttpResponseForbidden('Pilot organisations are created by Hearteli administrators.')
     name = request.POST.get('name', '').strip()
     if not 2 <= len(name) <= 120:
         return HttpResponseForbidden('Provide a workspace name of 2–120 characters.')
@@ -112,25 +115,13 @@ def create_workspace(request):
 
 @login_required(login_url='/work/login/')
 def dashboard(request, pk):
-    workspace = admin_workspace(request.user, pk)
-    if workspace is None:
-        return HttpResponseForbidden('You do not have admin access to this workspace.')
-    members = workspace.memberships.select_related('user').order_by('role', 'user__name')
-    approved_count = members.filter(status=WorkspaceMembership.STATUS_APPROVED).count()
-    context = {
-        'workspace': workspace, 'members': members,
-        'approved_count': approved_count, 'pending_count': members.filter(status='pending').count(),
-        'aggregate_available': False, 'privacy_threshold': 10,
-        'resources': workspace.resources.order_by('title'),
-        'role_events': workspace.role_events.select_related('actor', 'member').order_by('-created_at')[:20],
-        'is_owner': workspace.owner_id == request.user.id,
-        'form': ResourceForm(),
-    }
-    return render(request, 'work/dashboard.html', context)
+    from .business_web import page
+    return page(request, pk)
 
 
 @login_required(login_url='/work/login/')
 @require_POST
+@transaction.atomic
 def invite(request, pk):
     workspace = admin_workspace(request.user, pk)
     if workspace is None or workspace.owner_id != request.user.id:
@@ -138,10 +129,20 @@ def invite(request, pk):
     email = request.POST.get('email', '').strip()
     member = User.objects.filter(email__iexact=email, is_active=True).first()
     if member and member.id != workspace.owner_id:
-        WorkspaceMembership.objects.get_or_create(workspace=workspace, user=member, defaults={
+        Workspace.objects.select_for_update().get(pk=workspace.pk)
+        from .subscriptions import require_subscription,SubscriptionRequired
+        try:
+            require_subscription(workspace,adding_member=not WorkspaceMembership.objects.filter(workspace=workspace,user=member).exists())
+        except SubscriptionRequired as exc:
+            from django.http import JsonResponse
+            return JsonResponse({'detail':str(exc.detail)},status=402)
+        membership, created = WorkspaceMembership.objects.get_or_create(workspace=workspace, user=member, defaults={
             'role': WorkspaceMembership.ROLE_EMPLOYEE, 'status': WorkspaceMembership.STATUS_PENDING,
             'invited_by': request.user})
-    return redirect('hearteli-work-dashboard', pk=pk)
+        messages.success(request,'Invitation sent.' if created else 'This member already has a workspace membership.')
+    else:
+        messages.error(request,'Choose another existing Hearteli member using their account email.')
+    return redirect('business-page', pk=pk, section='members')
 
 
 @login_required(login_url='/work/login/')
@@ -155,7 +156,7 @@ def approve(request, pk, member_id):
         membership.status = WorkspaceMembership.STATUS_APPROVED
         membership.joined_at = timezone.now()
         membership.save(update_fields=['status', 'joined_at'])
-    return redirect('hearteli-work-dashboard', pk=pk)
+    return redirect('business-page', pk=pk, section='members')
 
 
 @login_required(login_url='/work/login/')
@@ -174,7 +175,7 @@ def role(request, pk, member_id):
         membership.save(update_fields=['role', 'can_share_mood_with_manager'])
         WorkspaceRoleAudit.objects.create(workspace=workspace, actor=request.user,
             member=membership.user, from_role=previous, to_role=next_role)
-    return redirect('hearteli-work-dashboard', pk=pk)
+    return redirect('business-page', pk=pk, section='members')
 
 
 @login_required(login_url='/work/login/')
@@ -188,7 +189,12 @@ def add_resource(request, pk):
         item = form.save(commit=False)
         item.workspace = workspace
         item.save()
-    return redirect('hearteli-work-dashboard', pk=pk)
+        from django.contrib import messages
+        messages.success(request,'Resource published.')
+    else:
+        from django.contrib import messages
+        messages.error(request,' '.join(str(error) for errors in form.errors.values() for error in errors))
+    return redirect('business-page', pk=pk, section='resources')
 
 
 @login_required(login_url='/work/login/')
@@ -198,4 +204,4 @@ def remove_resource(request, pk, resource_id):
     if workspace is None or workspace.owner_id != request.user.id:
         return HttpResponseForbidden('Owner access required.')
     get_object_or_404(WorkspaceResource, pk=resource_id, workspace=workspace).delete()
-    return redirect('hearteli-work-dashboard', pk=pk)
+    return redirect('business-page', pk=pk, section='resources')

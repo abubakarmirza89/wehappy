@@ -13,6 +13,7 @@ from django.utils.timezone import now
 from twilio.rest import Client
 from apps.tracking.models import MoodCheckIn, GratitudeEntry, User, MoodNotification, Relative
 from apps.users.models import User as UserModel
+from apps.users.communications import email_signature_text
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ def send_email_notification(recipient_email, subject, message):
     """Send a plain email notification to a recipient."""
     send_mail(
         subject=subject,
-        message=message,
+        message=f"{message.rstrip()}\n\n{email_signature_text()}",
         from_email=settings.DEFAULT_FROM_EMAIL or 'noreply@wehappy.local',
         recipient_list=[recipient_email],
         fail_silently=False,

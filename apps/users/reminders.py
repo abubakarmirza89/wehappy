@@ -1,70 +1,46 @@
-import random
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from django.utils import timezone
 from apps.tracking.models import HearteliPreferences, MoodCheckIn, EmpathyNudge, SupportOutcome
-from .models import Appointment, EmailDelivery, Notification, User
+from .models import Appointment, EmailDelivery, Notification
 from .communications import queue_email
 
 
-def daily_push_reminder_minutes(user_id, day):
-    randomizer = random.Random(f'{user_id}:{day.isoformat()}')
-    while True:
-        minutes = sorted(randomizer.sample(range(8 * 60, 22 * 60 + 1), 3))
-        if all(later - earlier >= 4 * 60 for earlier, later in zip(minutes, minutes[1:])):
-            return minutes
+DAILY_PROMPT_TITLE = 'A little moment for you'
+DAILY_PROMPT_MESSAGE = 'How are you feeling today? Take a moment to check in with yourself.'
 
 
 def queue_due_push_reminders(at=None):
     at = at or timezone.now()
-    users = User.objects.filter(
-        is_active=True, device_tokens__is_active=True,
-    ).distinct().iterator()
-    for user in users:
-        pref, _ = HearteliPreferences.objects.get_or_create(user=user)
+    for pref in HearteliPreferences.objects.filter(
+        reminder_enabled=True,
+        user__is_active=True,
+        user__device_tokens__is_active=True,
+    ).select_related('user').distinct().iterator():
+        user = pref.user
         local = at.astimezone(ZoneInfo(pref.timezone_name))
-        current_minute = local.replace(second=0, microsecond=0)
-        for slot, minute in enumerate(daily_push_reminder_minutes(user.pk, local.date())):
-            scheduled = local.replace(
-                hour=minute // 60,
-                minute=minute % 60,
-                second=0,
-                microsecond=0,
-            )
-            delay = current_minute - scheduled
-            if delay < timedelta(0) or delay > timedelta(minutes=4):
-                continue
-            event_key = f'daily-prompt:{user.pk}:{local.date().isoformat()}:{slot}'
-            delivery, created = EmailDelivery.objects.get_or_create(
-                event_key=event_key,
-                defaults={
-                    'recipient': user,
-                    'kind': 'daily_prompt',
-                    'channel': 'push',
-                    'subject': 'A moment for yourself · Hearteli',
-                    'message': 'Take a gentle moment to check in with yourself.',
-                    'next_attempt_at': at,
-                },
-            )
-            if created:
-                Notification.objects.create(
-                    recipient=user,
-                    verb=delivery.message,
-                )
-            break
+        if local.time().replace(second=0, microsecond=0) != pref.reminder_time:
+            continue
+        if MoodCheckIn.objects.filter(user=user, date=local.date()).exists():
+            continue
+        event_key = f'daily-prompt:{user.pk}:{local.date().isoformat()}'
+        delivery, created = EmailDelivery.objects.get_or_create(
+            event_key=event_key,
+            defaults={
+                'recipient': user,
+                'kind': 'daily_prompt',
+                'channel': 'push',
+                'subject': DAILY_PROMPT_TITLE,
+                'message': DAILY_PROMPT_MESSAGE,
+                'next_attempt_at': at,
+            },
+        )
+        if created:
+            Notification.objects.create(recipient=user, verb=delivery.message)
 
 
 def queue_due_reminders(at=None):
     at = at or timezone.now()
-    for pref in HearteliPreferences.objects.filter(reminder_enabled=True, user__is_active=True).select_related('user'):
-        local = at.astimezone(ZoneInfo(pref.timezone_name))
-        if local.time().replace(tzinfo=None) < pref.reminder_time:
-            continue
-        if MoodCheckIn.objects.filter(user=pref.user, date=local.date()).exists():
-            continue
-        queue_email(pref.user, 'reminder', 'A moment for you · Hearteli',
-            'How are you feeling today? There is room for good days, tough days and everything in between.',
-            key=f'reminder:{pref.user_id}:{local.date()}', path='/notifications/')
     # Existing appointment contract uses UTC; never infer a provider's timezone.
     for appointment in Appointment.objects.filter(status='BOOKED', date__range=[at.date(), (at + timedelta(days=1)).date()]).select_related('user', 'therapist'):
         start = datetime.combine(appointment.date, appointment.time, tzinfo=ZoneInfo('UTC'))

@@ -87,58 +87,60 @@ class _WorkScreenState extends State<WorkScreen> {
 
   @override
   Widget build(BuildContext context) => RefreshIndicator(
-    onRefresh: load,
-    child: ListView(
-      padding: screenPadding,
-      children: [
-        const PageIntro(
-          title: 'For Work',
-          subtitle: 'Your personal check-ins stay yours. Work support is a separate choice.',
-        ),
-        const SizedBox(height: 18),
-        const StatusPanel(
-          message: 'Your employer does not get access to private moods, notes, or check-in history by paying for or inviting you to Hearteli.',
-          icon: Icons.lock_outline,
-        ),
-        const SizedBox(height: 20),
-        if (loading)
-          const Center(child: CircularProgressIndicator())
-        else if (error != null)
-          StatusPanel(message: error!, action: 'Retry', onAction: load)
-        else if (workspaces.isEmpty)
-          const StatusPanel(
-            message: 'You are not part of an active workplace yet.',
-          )
-        else
-          for (final raw in workspaces)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: HearteliCard(
-                child: LabelRow(
-                  icon: Icons.work_outline,
-                  title: '${raw['name']}',
-                  subtitle: 'Separate workplace context',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => WorkDetail(
-                        apiClient: widget.apiClient,
-                        sessionStore: widget.sessionStore,
-                        workspace: Map<String, dynamic>.from(raw as Map),
+        onRefresh: load,
+        child: ListView(
+          padding: screenPadding,
+          children: [
+            const PageIntro(
+              title: 'Your workplace',
+              subtitle:
+                  'Your personal check-ins stay yours. Work support is a separate choice.',
+            ),
+            const SizedBox(height: 18),
+            const StatusPanel(
+              message:
+                  'Your employer does not get access to private moods, notes, or check-in history by paying for or inviting you to Hearteli.',
+              icon: Icons.lock_outline,
+            ),
+            const SizedBox(height: 20),
+            if (loading)
+              const Center(child: CircularProgressIndicator())
+            else if (error != null)
+              StatusPanel(message: error!, action: 'Retry', onAction: load)
+            else if (workspaces.isEmpty)
+              const StatusPanel(
+                message: 'You are not part of an active workplace yet.',
+              )
+            else
+              for (final raw in workspaces)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: HearteliCard(
+                    child: LabelRow(
+                      icon: Icons.work_outline,
+                      title: '${raw['name']}',
+                      subtitle: 'Separate workplace context',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => WorkDetail(
+                            apiClient: widget.apiClient,
+                            sessionStore: widget.sessionStore,
+                            workspace: Map<String, dynamic>.from(raw as Map),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: join,
+              child: const Text('Join with invite code'),
             ),
-        const SizedBox(height: 12),
-        OutlinedButton(
-          onPressed: join,
-          child: const Text('Join with invite code'),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 }
 
 class WorkDetail extends StatefulWidget {
@@ -169,9 +171,12 @@ class _WorkDetailState extends State<WorkDetail> {
 
   Future<void> load() async {
     try {
-      final resourceData = await widget.apiClient.get('/api/tracking/workspace-resources/');
-      if (mounted) setState(() => resources = items(resourceData).where(
-        (item) => item['workspace'] == widget.workspace['id']).toList());
+      final resourceData =
+          await widget.apiClient.get('/api/tracking/workspace-resources/');
+      if (mounted)
+        setState(() => resources = items(resourceData)
+            .where((item) => item['workspace'] == widget.workspace['id'])
+            .toList());
       if (!owner) return;
       final data = await widget.apiClient.get(
         '/api/tracking/workspaces/${widget.workspace['id']}/office_dashboard/',
@@ -236,130 +241,143 @@ class _WorkDetailState extends State<WorkDetail> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text('${widget.workspace['name']} · Work')),
-    body: RefreshIndicator(
-      onRefresh: load,
-      child: ListView(
-        padding: screenPadding,
-        children: [
-          PageIntro(
-            title: '${widget.workspace['name']}',
-            subtitle: 'Work support and personal wellbeing stay separate.',
-          ),
-          const SizedBox(height: 18),
-          const HearteliCard(
-            color: AppColors.softBlue,
-            child: Text(
-              'No individual personal mood or check-in history is visible to workplace owners or managers.',
-            ),
-          ),
-          const SizedBox(height: 16),
-          HearteliCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Support routes',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+        appBar: AppBar(title: Text('${widget.workspace['name']} · Work')),
+        body: RefreshIndicator(
+          onRefresh: load,
+          child: ListView(
+            padding: screenPadding,
+            children: [
+              PageIntro(
+                title: '${widget.workspace['name']}',
+                subtitle: 'Work support and personal wellbeing stay separate.',
+              ),
+              const SizedBox(height: 18),
+              const HearteliCard(
+                color: AppColors.softBlue,
+                child: Text(
+                  'No individual personal mood or check-in history is visible to workplace owners or managers.',
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'You can choose a trusted work contact for a single reviewed nudge. Joining a workspace alone never sends one.',
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          SupportInboxScreen(apiClient: widget.apiClient),
-                    ),
-                  ),
-                  child: const Text('View authorised nudges'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text('Workplace resources', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          if (resources.isEmpty) const StatusPanel(message: 'No support resources configured yet.'),
-          for (final raw in resources) HearteliCard(child: LabelRow(icon: Icons.folder_open_outlined,
-            title: '${raw['title']}', subtitle: '${raw['description']} · ${raw['url']}',
-            onTap: () async {
-              final uri = Uri.tryParse('${raw['url']}');
-              if (uri != null && uri.scheme == 'https') await launchUrl(uri, mode: LaunchMode.externalApplication);
-            })),
-          if (owner) ...[
-            const SizedBox(height: 22),
-            const Text(
-              'Admin overview',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-            ),
-            if (error != null)
-              StatusPanel(message: error!)
-            else if (dashboard == null)
-              const Center(child: CircularProgressIndicator())
-            else ...[
-              const SizedBox(height: 12),
+              ),
+              const SizedBox(height: 16),
               HearteliCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${dashboard!['total_members']} members',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 25,
-                      ),
+                    const Text(
+                      'Support routes',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      dashboard!['aggregate_available'] == true
-                          ? 'Aggregate wellbeing trends require separately authorised work-context data.'
-                          : 'Aggregate trends suppressed below ${dashboard!['privacy_threshold']} members.',
+                    const SizedBox(height: 8),
+                    const Text(
+                      'You can choose a trusted work contact for a single reviewed nudge. Joining a workspace alone never sends one.',
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              SupportInboxScreen(
+                                apiClient: widget.apiClient,
+                                sessionStore: widget.sessionStore,
+                              ),
+                        ),
+                      ),
+                      child: const Text('View authorised nudges'),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 15),
-              const Text(
-                'Members & roles',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-              ),
-              for (final raw in dashboard!['members'] as List)
+              const SizedBox(height: 16),
+              const Text('Workplace resources',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              if (resources.isEmpty)
+                const StatusPanel(
+                    message: 'No support resources configured yet.'),
+              for (final raw in resources)
                 HearteliCard(
-                  child: LabelRow(
-                    icon: Icons.person_outline,
-                    title: '${raw['name']}',
-                    subtitle: '${raw['designation']} · ${raw['role']}',
-                    trailing: raw['id'] == widget.workspace['owner']
-                        ? null
-                        : PopupMenuButton<String>(
-                            tooltip: 'Change member role',
-                            onSelected: (v) => changeRole(raw as Map, v),
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(
-                                value: 'employee',
-                                child: Text('Employee'),
-                              ),
-                              PopupMenuItem(
-                                value: 'manager',
-                                child: Text('Manager'),
-                              ),
-                            ],
-                          ),
-                  ),
+                    child: LabelRow(
+                        icon: Icons.folder_open_outlined,
+                        title: '${raw['title']}',
+                        subtitle: '${raw['description']} · ${raw['url']}',
+                        onTap: () async {
+                          final uri = Uri.tryParse('${raw['url']}');
+                          if (uri != null && uri.scheme == 'https')
+                            await launchUrl(uri,
+                                mode: LaunchMode.externalApplication);
+                        })),
+              if (owner) ...[
+                const SizedBox(height: 22),
+                const Text(
+                  'Admin overview',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: invite,
-                icon: const Icon(Icons.person_add_alt_1_outlined),
-                label: const Text('Invite member'),
-              ),
+                if (error != null)
+                  StatusPanel(message: error!)
+                else if (dashboard == null)
+                  const Center(child: CircularProgressIndicator())
+                else ...[
+                  const SizedBox(height: 12),
+                  HearteliCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${dashboard!['total_members']} members',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 25,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          dashboard!['aggregate_available'] == true
+                              ? 'Aggregate wellbeing trends require separately authorised work-context data.'
+                              : 'Aggregate trends suppressed below ${dashboard!['privacy_threshold']} members.',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  const Text(
+                    'Members & roles',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                  ),
+                  for (final raw in dashboard!['members'] as List)
+                    HearteliCard(
+                      child: LabelRow(
+                        icon: Icons.person_outline,
+                        title: '${raw['name']}',
+                        subtitle: '${raw['designation']} · ${raw['role']}',
+                        trailing: raw['id'] == widget.workspace['owner']
+                            ? null
+                            : PopupMenuButton<String>(
+                                tooltip: 'Change member role',
+                                onSelected: (v) => changeRole(raw as Map, v),
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'employee',
+                                    child: Text('Employee'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'manager',
+                                    child: Text('Manager'),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: invite,
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    label: const Text('Invite member'),
+                  ),
+                ],
+              ],
             ],
-          ],
-        ],
-      ),
-    ),
-  );
+          ),
+        ),
+      );
 }

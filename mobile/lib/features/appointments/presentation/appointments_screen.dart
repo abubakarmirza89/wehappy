@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../therapist/presentation/practice_shell.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../hearteli/presentation/components.dart';
@@ -103,9 +106,75 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     }
   }
 
+  Future<void> review(Map item) async {
+    int rating = 5;
+    final comment = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('Rate your completed session'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Your rating and review will appear on the therapist profile. Keep personal health details private.',
+                ),
+                DropdownButton<int>(
+                  value: rating,
+                  items: [1, 2, 3, 4, 5]
+                      .map(
+                        (v) =>
+                            DropdownMenuItem(value: v, child: Text('$v / 5')),
+                      )
+                      .toList(),
+                  onChanged: (v) => update(() => rating = v ?? 5),
+                ),
+                TextField(
+                  controller: comment,
+                  maxLength: 2000,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Review (optional)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialog, true),
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == true) {
+      try {
+        await widget.apiClient.post(
+          '/api/users/feedback/${item['therapist_id']}/',
+          body: {
+            'appointment_id': item['id'],
+            'rating': rating,
+            'comment': comment.text.trim(),
+          },
+        );
+        await load();
+      } catch (e) {
+        if (mounted) showCalmMessage(context, '$e');
+      }
+    }
+    comment.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Your appointments')),
     body: RefreshIndicator(
       onRefresh: load,
       child: ListView(
@@ -142,16 +211,98 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                       ),
                       Text('${raw['date']} · ${raw['time']} UTC'),
                       Text('${raw['location']} · ${raw['status']}'),
+                      if (raw.containsKey('therapist_id') &&
+                          raw['status'] == 'COMPLETED')
+                        TextButton(
+                          onPressed: raw['review_submitted'] == true
+                              ? null
+                              : () => review(raw as Map),
+                          child: Text(
+                            raw['review_submitted'] == true
+                                ? 'Review submitted'
+                                : 'Rate this session',
+                          ),
+                        ),
+                      TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AppointmentChatScreen(
+                              apiClient: widget.apiClient,
+                              id: raw['id'] as int,
+                            ),
+                          ),
+                        ),
+                        child: const Text('Session chat'),
+                      ),
+                      if (raw.containsKey('therapist') &&
+                          raw['payment_status'] == 'pending' &&
+                          raw['status'] == 'BOOKED')
+                        TextButton(
+                          onPressed: () async {
+                            try {
+                              final data = await widget.apiClient.post(
+                                '/api/users/appointment/${raw['id']}/checkout/',
+                                body: {},
+                              );
+                              if (!await launchUrl(
+                                    Uri.parse('${data['url']}'),
+                                    mode: LaunchMode.externalApplication,
+                                  ) &&
+                                  mounted)
+                                showCalmMessage(
+                                  context,
+                                  'Could not open secure payment.',
+                                );
+                            } catch (e) {
+                              if (mounted) showCalmMessage(context, '$e');
+                            }
+                          },
+                          child: const Text('Pay securely'),
+                        ),
+                      if (raw.containsKey('user') &&
+                          ['BOOKED', 'IN_PROGRESS'].contains(raw['status']))
+                        PopupMenuButton<String>(
+                          onSelected: (status) async {
+                            try {
+                              await widget.apiClient.patch(
+                                '/api/users/appointment/${raw['id']}/',
+                                body: {'status': status},
+                              );
+                              await load();
+                            } catch (e) {
+                              if (mounted) showCalmMessage(context, '$e');
+                            }
+                          },
+                          itemBuilder: (_) => raw['status'] == 'BOOKED'
+                              ? const [
+                                  PopupMenuItem(
+                                    value: 'IN_PROGRESS',
+                                    child: Text('Start session'),
+                                  ),
+                                ]
+                              : const [
+                                  PopupMenuItem(
+                                    value: 'COMPLETED',
+                                    child: Text('Complete session'),
+                                  ),
+                                ],
+                          child: const Padding(
+                            padding: EdgeInsets.all(14),
+                            child: Text('Update session status'),
+                          ),
+                        ),
                       if (raw['status'] == 'BOOKED')
                         Wrap(
                           spacing: 10,
                           children: [
-                            OutlinedButton(
-                              onPressed: busy
-                                  ? null
-                                  : () => change(raw as Map, false),
-                              child: const Text('Reschedule'),
-                            ),
+                            if (raw.containsKey('therapist'))
+                              OutlinedButton(
+                                onPressed: busy
+                                    ? null
+                                    : () => change(raw as Map, false),
+                                child: const Text('Reschedule'),
+                              ),
                             TextButton(
                               onPressed: busy
                                   ? null
