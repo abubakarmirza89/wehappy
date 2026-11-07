@@ -1,4 +1,4 @@
-package com.hearteli.app
+package com.hearteli.userapp
 
 import io.flutter.embedding.android.FlutterActivity
 
