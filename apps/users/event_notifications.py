@@ -18,7 +18,11 @@ def welcome(sender, instance, created, raw=False, **kwargs):
 
 @receiver(post_save, sender=CircleConnection)
 def circle_invite(sender, instance, created, raw=False, **kwargs):
-    if created and not raw:
+    if (
+        created
+        and not raw
+        and not getattr(instance, '_circle_invite_code_redeemed', False)
+    ):
         queue_email(
             instance.recipient,
             'circle_invite',
@@ -47,7 +51,11 @@ def circle_connection_previous(sender, instance, raw=False, **kwargs):
 
 @receiver(post_save, sender=CircleConnection)
 def circle_accepted(sender, instance, created, raw=False, **kwargs):
-    if raw or created or instance._old_accepted_at is not None:
+    if raw:
+        return
+    if created and not getattr(instance, '_circle_invite_code_redeemed', False):
+        return
+    if not created and instance._old_accepted_at is not None:
         return
     if instance.accepted_at is None or instance.declined_at is not None:
         return

@@ -77,6 +77,15 @@ This document lists the main API endpoints for the WeHappy app.
 
 ## Tracking APIs
 
+### Hearteli Circle invitations
+- POST /api/tracking/hearteli/circle/invite-code/
+  - Requires authentication.
+  - Returns a unique, single-use 20-character code that expires after 10 minutes. A newly issued code invalidates the owner's earlier unused code.
+- POST /api/tracking/hearteli/circle/redeem-invite/
+  - Requires authentication.
+  - Body: `{ "code": "<invite-code>" }`
+  - Redeeming joins the signed-in member to the inviter's Circle. Nudge permission remains off until separately enabled.
+
 ### Relatives
 - GET /api/tracking/relatives/
 - POST /api/tracking/relatives/

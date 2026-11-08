@@ -2,7 +2,11 @@ from django.contrib import admin
 from django import forms
 from django.contrib.auth import admin as auth_admin
 from django.contrib.auth import get_user_model
+from django.contrib.admin.helpers import ActionForm
+from django.contrib import messages
+from django.db import transaction
 from django.utils.translation import gettext_lazy as _
+import uuid
 
 from apps.users.forms import UserAdminChangeForm, UserAdminCreationForm
 
@@ -21,10 +25,28 @@ from .models import (
 User = get_user_model()
 
 
+class ManualPushActionForm(ActionForm):
+    push_title = forms.CharField(
+        label="Push title",
+        max_length=200,
+        required=False,
+        help_text="Required when sending a push notification.",
+    )
+    push_message = forms.CharField(
+        label="Push message",
+        max_length=255,
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2}),
+        help_text="Required when sending. Keep it short for lock-screen display.",
+    )
+
+
 @admin.register(User)
 class UserAdmin(auth_admin.UserAdmin):
     form = UserAdminChangeForm
     add_form = UserAdminCreationForm
+    action_form = ManualPushActionForm
+    actions = ["delete_selected", "send_manual_push"]
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         (
@@ -64,6 +86,62 @@ class UserAdmin(auth_admin.UserAdmin):
             },
         ),
     )
+
+    @admin.action(description="Queue Firebase push for selected users")
+    def send_manual_push(self, request, queryset):
+        try:
+            title = self.action_form.base_fields["push_title"].clean(
+                request.POST.get("push_title", "")
+            ).strip()
+            body = self.action_form.base_fields["push_message"].clean(
+                request.POST.get("push_message", "")
+            ).strip()
+        except forms.ValidationError as error:
+            messages.error(request, " ".join(error.messages))
+            return
+
+        if not title or not body:
+            messages.error(request, "Both the push title and message are required.")
+            return
+
+        selected_count = queryset.count()
+        recipients = queryset.filter(
+            is_active=True,
+            device_tokens__is_active=True,
+        ).distinct()
+        eligible_count = recipients.count()
+        if not eligible_count:
+            messages.warning(
+                request,
+                "No selected active users have a registered active device token. "
+                "Nothing was queued.",
+            )
+            return
+
+        from .communications import queue_push_notification
+
+        event_id = uuid.uuid4()
+        queued_count = 0
+        with transaction.atomic():
+            for recipient in recipients:
+                delivery = queue_push_notification(
+                    recipient,
+                    "admin_manual",
+                    title,
+                    body,
+                    key=f"admin-manual:{event_id}:{recipient.pk}",
+                    in_app_message=body,
+                )
+                if delivery is not None:
+                    queued_count += 1
+
+        skipped_count = selected_count - queued_count
+        messages.success(
+            request,
+            f"Queued push notification for {queued_count} user(s). "
+            "The notification worker will send it through Firebase. "
+            f"Skipped {skipped_count} inactive user(s) or user(s) without an active device token.",
+        )
 
 
 admin.site.register(Brain_Health_Score)

@@ -1,9 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from rest_framework.test import APITestCase
-from apps.tracking.models import CircleConnection, Mood, MoodCheckIn, EmpathyNudge, Suggestion, Message
+from apps.tracking.models import CircleConnection, CircleInviteCode, Mood, MoodCheckIn, EmpathyNudge, Suggestion, Message, ConsentEvent
 from apps.users.models import EmailDelivery, Notification, Send_To_Relative
+from datetime import timedelta
 import uuid
+import hashlib
 
 User = get_user_model()
 
@@ -16,6 +19,124 @@ class HearteliConsentTests(APITestCase):
         self.checkin = MoodCheckIn.objects.create(user=self.sender, notes='Private note')
         self.checkin.moods.add(self.mood)
         self.client.force_authenticate(user=self.sender)
+
+    def test_circle_code_is_unique_rotated_and_expires(self):
+        url = '/api/tracking/hearteli/circle/invite-code/'
+        first = self.client.post(url, {'relationship': 'Friend'}, format='json')
+        second = self.client.post(url, {'relationship': 'Partner'}, format='json')
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertNotEqual(first.data['code'], second.data['code'])
+        self.assertEqual(len(second.data['code']), 20)
+        self.assertLessEqual(
+            (second.data['expires_at'] - timezone.now()).total_seconds(),
+            10 * 60,
+        )
+        self.assertFalse(
+            CircleInviteCode.objects.get(
+                code_hash=hashlib.sha256(first.data['code'].encode()).hexdigest(),
+            ).expires_at > timezone.now()
+        )
+
+    def test_circle_code_redeems_once_and_joins_without_nudge_permission(self):
+        issued = self.client.post(
+            '/api/tracking/hearteli/circle/invite-code/',
+            {'relationship': 'Family'},
+            format='json',
+        )
+        code = issued.data['code']
+        self.client.force_authenticate(user=self.recipient)
+
+        response = self.client.post(
+            '/api/tracking/hearteli/circle/redeem-invite/',
+            {'code': f'{code[:5]}-{code[5:10]} {code[10:]}'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        connection = CircleConnection.objects.get(
+            owner=self.sender,
+            recipient=self.recipient,
+        )
+        self.assertIsNotNone(connection.accepted_at)
+        self.assertEqual(connection.relationship, 'Family')
+        self.assertFalse(connection.may_receive_nudges)
+        self.assertTrue(
+            ConsentEvent.objects.filter(
+                actor=self.recipient,
+                connection=connection,
+                event='invite_redeemed',
+                categories=[],
+            ).exists()
+        )
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.sender,
+                verb__contains='has accepted your Circle invitation',
+            ).exists()
+        )
+        self.assertEqual(
+            self.client.post(
+                '/api/tracking/hearteli/circle/redeem-invite/',
+                {'code': code},
+                format='json',
+            ).status_code,
+            400,
+        )
+
+    def test_circle_code_rejects_self_and_expired_codes(self):
+        url = '/api/tracking/hearteli/circle/invite-code/'
+        issued = self.client.post(url, {}, format='json')
+        code = issued.data['code']
+        redeem_url = '/api/tracking/hearteli/circle/redeem-invite/'
+        self.client.force_authenticate(user=None)
+        self.assertIn(
+            self.client.post(redeem_url, {'code': code}, format='json').status_code,
+            (401, 403),
+        )
+
+        self.client.force_authenticate(user=self.sender)
+        self.assertEqual(
+            self.client.post(redeem_url, {'code': code}, format='json').status_code,
+            400,
+        )
+
+        self.client.force_authenticate(user=self.recipient)
+        digest = hashlib.sha256(code.encode()).hexdigest()
+        CircleInviteCode.objects.filter(code_hash=digest).update(
+            expires_at=timezone.now() - timedelta(seconds=1),
+        )
+        self.assertEqual(
+            self.client.post(redeem_url, {'code': code}, format='json').status_code,
+            400,
+        )
+
+    def test_existing_member_can_be_invited_to_circle(self):
+        response = self.client.post(
+            '/api/tracking/hearteli/circle/',
+            {
+                'recipient_email_input': self.recipient.email.upper(),
+                'relationship': 'Friend',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        connection = CircleConnection.objects.get(
+            owner=self.sender,
+            recipient=self.recipient,
+        )
+        self.assertEqual(response.data['id'], connection.id)
+        self.assertIsNone(connection.accepted_at)
+        self.assertTrue(
+            EmailDelivery.objects.filter(
+                recipient=self.recipient,
+                kind='circle_invite',
+                channel='email',
+                target_id=connection.id,
+            ).exists()
+        )
 
     def test_nudge_requires_recipient_acceptance_and_respects_revoke(self):
         connection = CircleConnection.objects.create(owner=self.sender, recipient=self.recipient)

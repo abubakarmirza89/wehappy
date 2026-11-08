@@ -3,6 +3,9 @@
 Every nudge is a deliberately confirmed, bounded snapshot. Check-in notes are
 never serialized to recipients or copied into the nudge payload.
 """
+import hashlib
+import secrets
+from datetime import timedelta
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -12,8 +15,14 @@ from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.response import Response
 
 from .models import (CircleConnection, ConsentEvent, EmpathyNudge,
-                     HearteliPreferences, MoodCheckIn, SupportOutcome, TherapistContextGrant)
+                     CircleInviteCode, HearteliPreferences, MoodCheckIn,
+                     SupportOutcome, TherapistContextGrant)
 from apps.users.models import User
+
+
+CIRCLE_INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+CIRCLE_INVITE_LENGTH = 20
+CIRCLE_INVITE_LIFETIME = timedelta(minutes=10)
 
 
 class ConnectionSerializer(serializers.ModelSerializer):
@@ -62,6 +71,98 @@ class ConnectionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         return CircleConnection.objects.filter(Q(owner=user) | Q(recipient=user)).select_related('owner', 'recipient')
+
+    @action(detail=False, methods=['post'], url_path='invite-code')
+    def invite_code(self, request):
+        relationship = request.data.get('relationship', 'Friend')
+        if not isinstance(relationship, str) or not 1 <= len(relationship.strip()) <= 40:
+            raise ValidationError({'relationship': 'Use a relationship name up to 40 characters.'})
+
+        now = timezone.now()
+        CircleInviteCode.objects.filter(
+            owner=request.user,
+            redeemed_at__isnull=True,
+            expires_at__gt=now,
+        ).update(expires_at=now)
+
+        code = ''.join(
+            secrets.choice(CIRCLE_INVITE_ALPHABET)
+            for _ in range(CIRCLE_INVITE_LENGTH)
+        )
+        invite = CircleInviteCode.objects.create(
+            owner=request.user,
+            code_hash=hashlib.sha256(code.encode('ascii')).hexdigest(),
+            relationship=relationship.strip(),
+            expires_at=now + CIRCLE_INVITE_LIFETIME,
+        )
+        return Response(
+            {'code': code, 'expires_at': invite.expires_at},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['post'], url_path='redeem-invite')
+    def redeem_invite(self, request):
+        code = request.data.get('code')
+        if not isinstance(code, str):
+            raise ValidationError({'code': 'Enter a valid Circle invite code.'})
+        normalized_code = ''.join(character for character in code.upper() if character.isalnum())
+        if (
+            len(normalized_code) != CIRCLE_INVITE_LENGTH
+            or any(character not in CIRCLE_INVITE_ALPHABET for character in normalized_code)
+        ):
+            raise ValidationError({'code': 'Enter a valid Circle invite code.'})
+        code_hash = hashlib.sha256(normalized_code.encode('ascii')).hexdigest()
+
+        with transaction.atomic():
+            invite = CircleInviteCode.objects.select_for_update().select_related('owner').filter(
+                code_hash=code_hash,
+            ).first()
+            now = timezone.now()
+            if (
+                invite is None
+                or invite.redeemed_at is not None
+                or invite.expires_at <= now
+                or not invite.owner.is_active
+                or invite.owner_id == request.user.id
+            ):
+                raise ValidationError({'code': 'This Circle invite is invalid, expired or already used.'})
+
+            invite.redeemed_at = now
+            invite.save(update_fields=['redeemed_at'])
+            connection = CircleConnection.objects.filter(
+                owner=invite.owner,
+                recipient=request.user,
+            ).first()
+            created = connection is None
+            if connection is None:
+                connection = CircleConnection(
+                    owner=invite.owner,
+                    recipient=request.user,
+                    relationship=invite.relationship,
+                    accepted_at=now,
+                )
+                connection._circle_invite_code_redeemed = True
+                connection.save()
+            elif connection.accepted_at is None or connection.declined_at is not None:
+                connection.relationship = invite.relationship
+                connection.accepted_at = now
+                connection.declined_at = None
+                connection.may_receive_nudges = False
+                connection.may_receive_preference = False
+                connection.ask_on_pattern = False
+                connection.save()
+
+            ConsentEvent.objects.create(
+                actor=request.user,
+                connection=connection,
+                event='invite_redeemed',
+                categories=[],
+            )
+
+        return Response(
+            self.get_serializer(connection).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
     def partial_update(self, request, *args, **kwargs):
         connection = self.get_object()

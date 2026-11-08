@@ -350,6 +350,15 @@ class CircleConnection(models.Model):
         constraints = [models.UniqueConstraint(fields=['owner', 'recipient'], name='hearteli_unique_circle')]
 
 
+class CircleInviteCode(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_circle_invite_codes')
+    code_hash = models.CharField(max_length=64, unique=True)
+    relationship = models.CharField(max_length=40, default='Friend')
+    expires_at = models.DateTimeField()
+    redeemed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class EmpathyNudge(models.Model):
     support_context=models.CharField(max_length=12,default='unknown',choices=[('unknown','Unknown'),('ordinary','Ordinary support'),('safety','Safety pathway')])
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_sent')

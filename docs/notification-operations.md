@@ -42,6 +42,10 @@ Failures retry up to five times with backoff. No credentials, provider error tex
 
 Inspect delivery metadata in Django admin. The admin view does not expose reset-link tokens or email bodies. Restrict admin access and adopt an operational retention policy for sent rows. Configure monitoring for failed and persistently unconfigured push rows.
 
+## Manual admin push
+
+In Django admin, open **Users**, select one or more accounts, choose **Queue Firebase push for selected users**, enter a short title and message, then run the action. Only active selected accounts with an active registered device token are queued. Delivery uses the normal notification worker and requires `FIREBASE_CREDENTIALS_PATH` plus the worker or scheduled management command to be configured and running. The admin action also creates an in-app notification and an auditable push outbox row; it does not send directly from the admin request.
+
 ## Current limits
 
 Live SMTP and FCM delivery have not been verified against production credentials. Android notification delivery when the app is backgrounded or terminated requires the backend Celery worker and beat (or the management-command scheduler) to remain available; Android force-stop, revoked OS permission, network delays, and device power-management restrictions can prevent timely display. iOS also requires its Firebase plist, APNs credentials and entitlements. The `rich_lock_preview` preference currently remains conservative: notifications keep minimal text even if enabled. Appointment times are stored as UTC; Flutter converts newly requested local times to UTC, and appointment lists/reschedule controls label UTC explicitly. Provider-specific calendars, duration-based overlap checking and payment/refund automation remain separate integrations.
