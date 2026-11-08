@@ -54,11 +54,12 @@ class _TherapyScreenState extends State<TherapyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = professionals
-        .where(
-          (p) => '${p['name']}'.toLowerCase().contains(query.toLowerCase()),
-        )
-        .toList();
+    final filtered =
+        professionals
+            .where(
+              (p) => '${p['name']}'.toLowerCase().contains(query.toLowerCase()),
+            )
+            .toList();
     return Scaffold(
       appBar: AppBar(title: const Text('Professional support')),
       body: ListView(
@@ -76,15 +77,18 @@ class _TherapyScreenState extends State<TherapyScreen> {
               labelText: 'Search by name',
             ),
           ),
+          const SizedBox(height: 12),
           TextField(
             decoration: const InputDecoration(labelText: 'Specialty'),
             onChanged: (v) => specialty = v,
           ),
+          const SizedBox(height: 12),
           TextField(
             decoration: const InputDecoration(labelText: 'Maximum fee (USD)'),
             keyboardType: TextInputType.number,
             onChanged: (v) => maxFee = v,
           ),
+          const SizedBox(height: 12),
           TextField(
             decoration: const InputDecoration(
               labelText: 'Session duration (minutes)',
@@ -92,6 +96,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
             keyboardType: TextInputType.number,
             onChanged: (v) => durationFilter = v,
           ),
+          const SizedBox(height: 12),
           OutlinedButton(onPressed: load, child: const Text('Apply filters')),
           const SizedBox(height: 16),
           if (loading)
@@ -105,59 +110,63 @@ class _TherapyScreenState extends State<TherapyScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: HearteliCard(
-                  child: raw['sponsor'] != null
-                      ? SponsorPlacement(
-                          apiClient: widget.apiClient,
-                          payload: Map<String, dynamic>.from(raw['sponsor']),
-                          child: LabelRow(
+                  child:
+                      raw['sponsor'] != null
+                          ? SponsorPlacement(
+                            apiClient: widget.apiClient,
+                            payload: Map<String, dynamic>.from(raw['sponsor']),
+                            child: LabelRow(
+                              icon: Icons.psychology_outlined,
+                              title:
+                                  '${raw['name']} ${raw['verified'] == true ? '✓ Verified' : ''}',
+                              subtitle:
+                                  '${items(raw['offerings']).length} approved session options',
+                              onTap: () async {
+                                try {
+                                  await widget.apiClient.post(
+                                    '/api/users/sponsor-events/',
+                                    body: {
+                                      'event_id': raw['sponsor']['event_id'],
+                                      'event_type': 'click',
+                                    },
+                                  );
+                                } catch (_) {}
+                                if (!context.mounted) return;
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (_) => TherapistDetail(
+                                          apiClient: widget.apiClient,
+                                          therapist: Map<String, dynamic>.from(
+                                            raw as Map,
+                                          ),
+                                        ),
+                                  ),
+                                );
+                              },
+                            ),
+                          )
+                          : LabelRow(
                             icon: Icons.psychology_outlined,
                             title:
                                 '${raw['name']} ${raw['verified'] == true ? '✓ Verified' : ''}',
                             subtitle:
                                 '${items(raw['offerings']).length} approved session options',
-                            onTap: () async {
-                              try {
-                                await widget.apiClient.post(
-                                  '/api/users/sponsor-events/',
-                                  body: {
-                                    'event_id': raw['sponsor']['event_id'],
-                                    'event_type': 'click',
-                                  },
-                                );
-                              } catch (_) {}
-                              if (!context.mounted) return;
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => TherapistDetail(
-                                    apiClient: widget.apiClient,
-                                    therapist: Map<String, dynamic>.from(
-                                      raw as Map,
-                                    ),
+                            onTap:
+                                () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (_) => TherapistDetail(
+                                          apiClient: widget.apiClient,
+                                          therapist: Map<String, dynamic>.from(
+                                            raw as Map,
+                                          ),
+                                        ),
                                   ),
                                 ),
-                              );
-                            },
                           ),
-                        )
-                      : LabelRow(
-                          icon: Icons.psychology_outlined,
-                          title:
-                              '${raw['name']} ${raw['verified'] == true ? '✓ Verified' : ''}',
-                          subtitle:
-                              '${items(raw['offerings']).length} approved session options',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => TherapistDetail(
-                                apiClient: widget.apiClient,
-                                therapist: Map<String, dynamic>.from(
-                                  raw as Map,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
                 ),
               ),
           const SizedBox(height: 12),
@@ -194,15 +203,17 @@ class TherapistDetail extends StatelessWidget {
                 : '${therapist['average_rating']} / 5 · ${therapist['review_count']} reviews',
           ),
           TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TherapistReviewsScreen(
-                  apiClient: apiClient,
-                  id: therapist['id'] as int,
+            onPressed:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (_) => TherapistReviewsScreen(
+                          apiClient: apiClient,
+                          id: therapist['id'] as int,
+                        ),
+                  ),
                 ),
-              ),
-            ),
             child: const Text('Read client reviews'),
           ),
           Center(
@@ -250,26 +261,32 @@ class TherapistDetail extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           FilledButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    BookTherapist(apiClient: apiClient, therapist: therapist),
-              ),
-            ),
+            onPressed:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (_) => BookTherapist(
+                          apiClient: apiClient,
+                          therapist: therapist,
+                        ),
+                  ),
+                ),
             child: const Text('Request a session'),
           ),
           const SizedBox(height: 8),
           OutlinedButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ShareTherapyContext(
-                  apiClient: apiClient,
-                  therapist: therapist,
+            onPressed:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (_) => ShareTherapyContext(
+                          apiClient: apiClient,
+                          therapist: therapist,
+                        ),
+                  ),
                 ),
-              ),
-            ),
             child: const Text('Share selected context'),
           ),
           const SizedBox(height: 12),
@@ -336,31 +353,33 @@ class _BookTherapistState extends State<BookTherapist> {
 
   Future<void> submit() async {
     if (date == null || time == null || selectedOffering == null) return;
-    final utcStart = DateTime(
-      date!.year,
-      date!.month,
-      date!.day,
-      time!.hour,
-      time!.minute,
-    ).toUtc();
+    final utcStart =
+        DateTime(
+          date!.year,
+          date!.month,
+          date!.day,
+          time!.hour,
+          time!.minute,
+        ).toUtc();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('Review session request'),
-        content: Text(
-          '${widget.therapist['name']}\n${date!.toIso8601String().substring(0, 10)} · ${time!.format(context)} (${DateTime.now().timeZoneName})\n$format\nFee: USD ${selectedOffering?['fee']} · ${selectedOffering?['duration_minutes']} minutes\n\nThis request does not share your private check-ins.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialog, false),
-            child: const Text('Edit'),
+      builder:
+          (dialog) => AlertDialog(
+            title: const Text('Review session request'),
+            content: Text(
+              '${widget.therapist['name']}\n${date!.toIso8601String().substring(0, 10)} · ${time!.format(context)} (${DateTime.now().timeZoneName})\n$format\nFee: USD ${selectedOffering?['fee']} · ${selectedOffering?['duration_minutes']} minutes\n\nThis request does not share your private check-ins.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialog, false),
+                child: const Text('Edit'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialog, true),
+                child: const Text('Confirm'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialog, true),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true) return;
     setState(() => busy = true);
@@ -377,9 +396,10 @@ class _BookTherapistState extends State<BookTherapist> {
           if (widget.therapist['sponsor'] != null)
             'sponsor_event_id': widget.therapist['sponsor']['event_id'],
           'location': format,
-          'reason': reason.text.trim().isEmpty
-              ? 'Support session'
-              : reason.text.trim(),
+          'reason':
+              reason.text.trim().isEmpty
+                  ? 'Support session'
+                  : reason.text.trim(),
         },
       );
       if (mounted) {
@@ -411,16 +431,17 @@ class _BookTherapistState extends State<BookTherapist> {
           decoration: const InputDecoration(
             labelText: 'Approved session & fee',
           ),
-          items: items(widget.therapist['offerings'])
-              .map(
-                (o) => DropdownMenuItem<int>(
-                  value: o['id'] as int,
-                  child: Text(
-                    '${o['duration_minutes']} minutes · USD ${o['fee']}',
-                  ),
-                ),
-              )
-              .toList(),
+          items:
+              items(widget.therapist['offerings'])
+                  .map(
+                    (o) => DropdownMenuItem<int>(
+                      value: o['id'] as int,
+                      child: Text(
+                        '${o['duration_minutes']} minutes · USD ${o['fee']}',
+                      ),
+                    ),
+                  )
+                  .toList(),
           onChanged: (v) => setState(() => offeringId = v),
         ),
         const SizedBox(height: 18),
@@ -459,10 +480,11 @@ class _BookTherapistState extends State<BookTherapist> {
         DropdownButtonFormField<String>(
           value: format,
           decoration: const InputDecoration(labelText: 'Session format'),
-          items: [
-            'Online',
-            'In person',
-          ].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+          items:
+              [
+                'Online',
+                'In person',
+              ].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
           onChanged: (v) => setState(() => format = v ?? format),
         ),
         const SizedBox(height: 12),
@@ -482,7 +504,8 @@ class _BookTherapistState extends State<BookTherapist> {
           ),
         ),
         const StatusPanel(
-          message: 'Booking does not grant access to your check-ins. You can share selected context separately.',
+          message:
+              'Booking does not grant access to your check-ins. You can share selected context separately.',
         ),
         const SizedBox(height: 20),
         FilledButton(
@@ -531,22 +554,23 @@ class _ShareTherapyContextState extends State<ShareTherapyContext> {
     if (selected.isEmpty) return;
     final yes = await showDialog<bool>(
       context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('Who can see this?'),
-        content: Text(
-          '${widget.therapist['name']} can view ${selected.length} selected check-in(s)${notes ? ', including their private notes' : ', without notes'}, for $days days. You can revoke access earlier.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialog, false),
-            child: const Text('Edit'),
+      builder:
+          (dialog) => AlertDialog(
+            title: const Text('Who can see this?'),
+            content: Text(
+              '${widget.therapist['name']} can view ${selected.length} selected check-in(s)${notes ? ', including their private notes' : ', without notes'}, for $days days. You can revoke access earlier.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialog, false),
+                child: const Text('Edit'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialog, true),
+                child: const Text('Share selected'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialog, true),
-            child: const Text('Share selected'),
-          ),
-        ],
-      ),
     );
     if (yes != true) return;
     setState(() => busy = true);
@@ -557,10 +581,11 @@ class _ShareTherapyContextState extends State<ShareTherapyContext> {
           'therapist': widget.therapist['id'],
           'check_in_ids': selected.toList(),
           'include_notes': notes,
-          'expires_at': DateTime.now()
-              .toUtc()
-              .add(Duration(days: days))
-              .toIso8601String(),
+          'expires_at':
+              DateTime.now()
+                  .toUtc()
+                  .add(Duration(days: days))
+                  .toIso8601String(),
         },
       );
       if (mounted) {
@@ -600,11 +625,13 @@ class _ShareTherapyContextState extends State<ShareTherapyContext> {
             ),
             subtitle: const Text('Only selected details'),
             value: selected.contains(raw['id']),
-            onChanged: (v) => setState(
-              () => v == true
-                  ? selected.add(raw['id'] as int)
-                  : selected.remove(raw['id']),
-            ),
+            onChanged:
+                (v) => setState(
+                  () =>
+                      v == true
+                          ? selected.add(raw['id'] as int)
+                          : selected.remove(raw['id']),
+                ),
           ),
         SwitchListTile(
           title: const Text('Include private notes'),
@@ -615,14 +642,15 @@ class _ShareTherapyContextState extends State<ShareTherapyContext> {
         DropdownButtonFormField<int>(
           value: days,
           decoration: const InputDecoration(labelText: 'Access expires in'),
-          items: [1, 7, 30]
-              .map(
-                (v) => DropdownMenuItem(
-                  value: v,
-                  child: Text('$v day${v == 1 ? '' : 's'}'),
-                ),
-              )
-              .toList(),
+          items:
+              [1, 7, 30]
+                  .map(
+                    (v) => DropdownMenuItem(
+                      value: v,
+                      child: Text('$v day${v == 1 ? '' : 's'}'),
+                    ),
+                  )
+                  .toList(),
           onChanged: (v) => setState(() => days = v ?? days),
         ),
         const SizedBox(height: 20),
@@ -672,22 +700,25 @@ class TherapistReviewsScreen extends StatelessWidget {
                       onPressed: () async {
                         final confirmed = await showDialog<bool>(
                           context: context,
-                          builder: (dialog) => AlertDialog(
-                            title: const Text('Report this review?'),
-                            content: const Text(
-                              'Send this review to the moderation team for assessment.',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(dialog, false),
-                                child: const Text('Cancel'),
+                          builder:
+                              (dialog) => AlertDialog(
+                                title: const Text('Report this review?'),
+                                content: const Text(
+                                  'Send this review to the moderation team for assessment.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.pop(dialog, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.pop(dialog, true),
+                                    child: const Text('Report'),
+                                  ),
+                                ],
                               ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(dialog, true),
-                                child: const Text('Report'),
-                              ),
-                            ],
-                          ),
                         );
                         if (confirmed != true) return;
                         try {

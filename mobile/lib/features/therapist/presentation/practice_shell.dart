@@ -143,7 +143,8 @@ class _TherapistApplicationState extends State<TherapistApplicationScreen> {
       children: [
         const PageIntro(
           title: 'Bring your practice to Hearteli',
-          subtitle: 'Submit your credentials for review. Approval is required before you can offer sessions. Admin-configured commission applies based on whether clients are platform-acquired or therapist-referred.',
+          subtitle:
+              'Submit your credentials for review. Approval is required before you can offer sessions. Admin-configured commission applies based on whether clients are platform-acquired or therapist-referred.',
         ),
         if (error != null)
           StatusPanel(message: error!, action: 'Retry', onAction: load),
@@ -171,8 +172,11 @@ class _TherapistApplicationState extends State<TherapistApplicationScreen> {
                         decoration: InputDecoration(
                           labelText: entry.key.replaceAll('_', ' '),
                         ),
-                        validator: (v) =>
-                            v == null || v.trim().isEmpty ? 'Required' : null,
+                        validator:
+                            (v) =>
+                                v == null || v.trim().isEmpty
+                                    ? 'Required'
+                                    : null,
                       ),
                     ),
                   FilledButton(
@@ -271,7 +275,8 @@ class _PracticeProfileState extends State<PracticeProfile> {
     children: [
       const PageIntro(
         title: 'Your professional profile',
-        subtitle: 'Confirm availability and submit session durations and fees for administrator approval.',
+        subtitle:
+            'Confirm availability and submit session durations and fees for administrator approval.',
       ),
       if (loading) const Center(child: CircularProgressIndicator()),
       if (error != null) StatusPanel(message: error!),
@@ -279,10 +284,12 @@ class _PracticeProfileState extends State<PracticeProfile> {
         controller: degrees,
         decoration: const InputDecoration(labelText: 'Degrees & credentials'),
       ),
+      const SizedBox(height: 12),
       TextField(
         controller: certifications,
         decoration: const InputDecoration(labelText: 'Certifications'),
       ),
+      const SizedBox(height: 12),
       TextField(
         controller: rate,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -290,6 +297,7 @@ class _PracticeProfileState extends State<PracticeProfile> {
           labelText: 'Proposed session fee (USD)',
         ),
       ),
+      const SizedBox(height: 12),
       DropdownButtonFormField<String>(
         value: availabilityStatus,
         items: const [
@@ -333,6 +341,7 @@ class _PracticeProfileState extends State<PracticeProfile> {
         Text(
           '${o['duration_minutes']} minutes · USD ${o['fee']} · ${o['approved'] == true ? 'Approved' : 'Pending approval'}',
         ),
+      const SizedBox(height: 12),
       TextField(
         controller: duration,
         keyboardType: TextInputType.number,
