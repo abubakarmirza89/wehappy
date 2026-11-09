@@ -32,7 +32,7 @@ class WorkspaceAndNotificationAPITests(APITestCase):
 
         response = self.client.post(
             "/api/tracking/workspaces/",
-            {"name": "Team Wellness", "description": "Office support circle"},
+            {"name": "Team Wellness", "description": "Office support circle", "workspace_type": "office"},
             format="json",
         )
 
@@ -43,6 +43,7 @@ class WorkspaceAndNotificationAPITests(APITestCase):
                 workspace__name="Team Wellness", user=self.owner, role=WorkspaceMembership.ROLE_OWNER
             ).exists()
         )
+        self.assertFalse(hasattr(Workspace.objects.get(name="Team Wellness"), "billing"))
 
     def test_member_can_join_workspace_via_invite_code(self):
         self.client.force_authenticate(user=self.owner)

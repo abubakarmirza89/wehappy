@@ -1,8 +1,12 @@
 """Event hooks only create durable rows; external sends happen in the worker."""
 from django.db.models.signals import post_save, pre_save
+from django.db import transaction
 from django.dispatch import receiver
+from django.utils import timezone
 from apps.users.models import User, Appointment, AppointmentMessage
-from apps.tracking.models import CircleConnection, EmpathyNudge, WorkspaceMembership, WorkspaceRoleAudit
+from apps.tracking.models import (CircleConnection, CircleSignupInvitation,
+                                  ConsentEvent, EmpathyNudge,
+                                  WorkspaceMembership, WorkspaceRoleAudit)
 from .communications import queue_email, queue_push_notification
 from .models import Notification
 
@@ -14,6 +18,34 @@ def welcome(sender, instance, created, raw=False, **kwargs):
             recipient=instance,
             verb='Welcome to Hearteli ❤️ — A little more understanding starts here. Take your time, settle in, and make this space your own.',
         )
+        claim_circle_signup_invitations(instance)
+
+
+def claim_circle_signup_invitations(user):
+    now = timezone.now()
+    with transaction.atomic():
+        invitations = CircleSignupInvitation.objects.select_for_update().filter(
+            email__iexact=user.email,
+            last_sent_at__isnull=False,
+            claimed_at__isnull=True,
+            expires_at__gt=now,
+        ).select_related('owner')
+        for invitation in invitations:
+            if invitation.owner_id != user.pk and invitation.owner.is_active:
+                connection, created = CircleConnection.objects.get_or_create(
+                    owner=invitation.owner,
+                    recipient=user,
+                    defaults={'relationship': invitation.relationship},
+                )
+                if created:
+                    ConsentEvent.objects.create(
+                        actor=invitation.owner,
+                        connection=connection,
+                        event='invited',
+                        categories=[],
+                    )
+            invitation.claimed_at = now
+            invitation.save(update_fields=['claimed_at'])
 
 
 @receiver(post_save, sender=CircleConnection)

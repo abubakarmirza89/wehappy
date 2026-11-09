@@ -60,7 +60,8 @@ class PracticeBillingTests(TestCase):
         self.client.force_login(self.other)
         self.assertEqual(self.client.get(f'/work/{self.workspace.pk}/billing/').status_code,404)
 
-    def test_business_checkout_is_disabled_for_manual_subscriptions(self):
+    @override_settings(STRIPE_SECRET_KEY='', STRIPE_WEBHOOK_SECRET='')
+    def test_business_checkout_shows_unavailable_message_when_stripe_is_not_configured(self):
         subscription=BusinessSubscription.objects.create(
             workspace=self.workspace,
             plan=self.plan,
@@ -72,9 +73,36 @@ class PracticeBillingTests(TestCase):
         response=self.client.post(
             f'/work/{self.workspace.pk}/billing/checkout/',{'plan':self.plan.pk}
         )
-        self.assertEqual(response.status_code,410)
+        self.assertEqual(response.status_code,302)
         subscription.refresh_from_db()
         self.assertEqual(subscription.checkout_session_id,'')
+        page=self.client.get(response['Location'])
+        self.assertContains(page,'Online checkout is not available right now')
+
+    @override_settings(STRIPE_SECRET_KEY='sk_test', STRIPE_WEBHOOK_SECRET='whsec_test')
+    @patch('apps.users.billing.stripe.checkout.Session.create')
+    def test_business_checkout_creates_stripe_subscription_session(self, create):
+        create.return_value.id='cs_workspace'
+        create.return_value.url='https://checkout.stripe.test/session'
+        self.client.force_login(self.member)
+
+        response=self.client.post(
+            f'/work/{self.workspace.pk}/billing/checkout/', {'plan':self.plan.pk}
+        )
+
+        self.assertEqual(response.status_code,302)
+        self.assertEqual(response['Location'],'https://checkout.stripe.test/session')
+        subscription=BusinessSubscription.objects.get(workspace=self.workspace)
+        self.assertEqual(subscription.checkout_session_id,'cs_workspace')
+        self.assertEqual(create.call_args.kwargs['mode'],'subscription')
+        self.assertEqual(
+            create.call_args.kwargs['subscription_data']['metadata']['workspace_id'],
+            str(self.workspace.pk),
+        )
+        self.assertEqual(
+            create.call_args.kwargs['subscription_data']['metadata']['billing_plan_id'],
+            str(self.plan.pk),
+        )
     def test_gated_write_and_seat_limit(self):
         self.plan.member_limit=1;self.plan.save()
         self.client.force_login(self.member)

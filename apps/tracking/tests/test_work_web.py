@@ -43,16 +43,15 @@ class WorkConsoleTests(TestCase):
             'confirm_password': 'StrongerPass123!'})
         self.assertRedirects(response, '/work/')
         response = self.client.post('/work/new/', {'name': 'New Team'})
-        self.assertEqual(response.status_code,403)
-        self.client.session.flush()
-        new_owner = get_user_model().objects.get(email='new-owner@hearteli.test');new_owner.is_staff=True;new_owner.save()
-        self.client.force_login(new_owner)
-        response=self.client.post('/work/new/',{'name':'New Team'})
+        self.assertEqual(response.status_code, 302)
         workspace = Workspace.objects.get(name='New Team')
         self.assertRedirects(response, f'/work/{workspace.pk}/')
         self.assertTrue(WorkspaceMembership.objects.filter(workspace=workspace,
             role=WorkspaceMembership.ROLE_OWNER,
             status=WorkspaceMembership.STATUS_APPROVED).exists())
+        self.assertContains(self.client.get(f'/work/{workspace.pk}/'), 'Subscribe to activate this workspace')
+        self.assertContains(self.client.get(f'/work/{workspace.pk}/billing/'), 'Available plans')
+        self.assertFalse(workspace.billing.entitled if hasattr(workspace, 'billing') else False)
 
     def test_owner_resources_role_audit_and_private_dashboard(self):
         self.client.force_login(self.owner)

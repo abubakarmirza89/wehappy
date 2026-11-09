@@ -11,18 +11,21 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.exceptions import NotFound, ValidationError, PermissionDenied
 from rest_framework.response import Response
 
-from .models import (CircleConnection, ConsentEvent, EmpathyNudge,
+from .models import (CircleConnection, CircleSignupInvitation, ConsentEvent, EmpathyNudge,
                      CircleInviteCode, HearteliPreferences, MoodCheckIn,
                      SupportOutcome, TherapistContextGrant)
 from apps.users.models import User
+from apps.users.communications import send_circle_signup_invitation
 
 
 CIRCLE_INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 CIRCLE_INVITE_LENGTH = 20
 CIRCLE_INVITE_LIFETIME = timedelta(minutes=10)
+CIRCLE_SIGNUP_INVITE_LIFETIME = timedelta(days=30)
+CIRCLE_SIGNUP_INVITE_COOLDOWN = timedelta(hours=24)
 
 
 class ConnectionSerializer(serializers.ModelSerializer):
@@ -51,8 +54,12 @@ class ConnectionSerializer(serializers.ModelSerializer):
         validated_data.pop('ask_on_pattern', None)
         if not email:
             raise ValidationError({'recipient_email_input': 'Email is required.'})
-        recipient = User.objects.filter(email__iexact=email, is_active=True).first()
-        if not recipient or recipient == self.context['request'].user:
+        recipient = User.objects.filter(email__iexact=email).first()
+        if not recipient:
+            raise NotFound('This person is not on Hearteli yet. Invite them to sign up.')
+        if not recipient.is_active:
+            raise ValidationError({'recipient_email_input': 'This Hearteli account is not active.'})
+        if recipient == self.context['request'].user:
             raise ValidationError({'recipient_email_input': 'Choose another existing Hearteli member.'})
         if CircleConnection.objects.filter(owner=self.context['request'].user, recipient=recipient).exists():
             raise ValidationError({'recipient_email_input': 'Already invited.'})
@@ -99,6 +106,41 @@ class ConnectionViewSet(viewsets.ModelViewSet):
             {'code': code, 'expires_at': invite.expires_at},
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=['post'], url_path='invite-signup')
+    def invite_signup(self, request):
+        email = serializers.EmailField().run_validation(request.data.get('email')).lower()
+        relationship = request.data.get('relationship', 'Friend')
+        if not isinstance(relationship, str) or not 1 <= len(relationship.strip()) <= 40:
+            raise ValidationError({'relationship': 'Use a relationship name up to 40 characters.'})
+        relationship = relationship.strip()
+        if email.casefold() == request.user.email.casefold():
+            raise ValidationError({'email': 'You cannot invite yourself.'})
+        if User.objects.filter(email__iexact=email).exists():
+            raise ValidationError({'email': 'This person already has a Hearteli account. Send a Circle invitation instead.'})
+
+        now = timezone.now()
+        with transaction.atomic():
+            invitation, created = CircleSignupInvitation.objects.select_for_update().get_or_create(
+                owner=request.user,
+                email=email,
+                defaults={
+                    'relationship': relationship,
+                    'expires_at': now + CIRCLE_SIGNUP_INVITE_LIFETIME,
+                },
+            )
+            if invitation.claimed_at is not None:
+                raise ValidationError({'email': 'This invitation has already been accepted by an account.'})
+            if invitation.last_sent_at and invitation.last_sent_at > now - CIRCLE_SIGNUP_INVITE_COOLDOWN:
+                raise ValidationError({'email': 'An invitation was sent to this address recently. Try again tomorrow.'})
+
+            invitation.relationship = relationship
+            invitation.expires_at = now + CIRCLE_SIGNUP_INVITE_LIFETIME
+            send_circle_signup_invitation(invitation)
+            invitation.last_sent_at = now
+            invitation.save(update_fields=['relationship', 'expires_at', 'last_sent_at'])
+
+        return Response({'message': 'Signup invitation sent.'}, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='redeem-invite')
     def redeem_invite(self, request):

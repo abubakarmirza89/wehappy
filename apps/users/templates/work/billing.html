@@ -1,1 +1,40 @@
-{% extends 'work/business_layout.html' %}{% block workspace_content %}<section class="panel"><h2>Manual organisation subscription</h2>{% if subscription %}<p>Plan: {{ subscription.plan.name }}</p><p>Status: {% if subscription.entitled %}Active{% elif subscription.period_end and subscription.period_end <= current_time %}Expired{% else %}{{ subscription.manual_status|title }}{% endif %}</p><p>Starts: {{ subscription.starts_at }} · Expires: {{ subscription.period_end }}</p><p>Seats: {{ subscription.plan.member_limit }}</p><p>Invoice: {{ subscription.invoice_reference|default:'Not recorded' }}</p><p>Agreed amount: {{ subscription.currency }} {{ subscription.agreed_amount|default:'Not recorded' }}</p><p>Payment recorded: {{ subscription.paid_at|default:'Pending' }}</p>{% else %}<p>Your Hearteli administrator has not assigned an organisation subscription yet.</p>{% endif %}<p>Contact your Hearteli administrator to activate, extend, renew or suspend organisation access. No automated checkout or recurring charge is used.</p><p>Personal accounts, check-ins and Circles remain available when organisation benefits expire.</p></section>{% endblock %}
+{% extends 'work/business_layout.html' %}
+{% block workspace_content %}
+{% if checkout_pending %}<p class="workspace-message" role="status">Checkout completed. We’re confirming your subscription now; this page will update shortly.</p>{% endif %}
+<section class="panel">
+  <h2>Workspace subscription</h2>
+  {% if subscription %}
+    <p>Plan: {{ subscription.plan.name }}</p>
+    <p>Status: {% if subscription.entitled %}Active{% elif subscription.period_end and subscription.period_end <= current_time %}Expired{% else %}{{ subscription.status|title }}{% endif %}</p>
+    {% if subscription.period_end %}<p>Current period ends: {{ subscription.period_end }}</p>{% endif %}
+    <p>Seats: {{ subscription.plan.member_limit }}</p>
+    {% if subscription.customer_id %}
+      <form method="post" action="{% url 'business-portal' workspace.pk %}">{% csrf_token %}<button type="submit">Manage subscription</button></form>
+    {% endif %}
+  {% else %}
+    <p class="error" role="alert">This workspace is not subscribed. Choose a plan below to activate member invitations and workplace resources.</p>
+  {% endif %}
+  <p>Your personal account, check-ins and Circle remain available independently of a workspace subscription.</p>
+</section>
+<section class="panel">
+  <h2>Available plans</h2>
+  {% if not billing_ready %}<p class="error" role="alert">Online checkout is not available right now. Please contact Hearteli support to subscribe.</p>{% endif %}
+  <div class="workspace-list">
+    {% for plan in plans %}
+      <article class="card">
+        <h3>{{ plan.name }}</h3>
+        <p><strong>{{ plan.currency|upper }} {{ plan.monthly_price }}</strong> / month</p>
+        <p>Up to {{ plan.member_limit }} team members</p>
+        {% if not subscription.entitled and billing_ready %}
+          <form method="post" action="{% url 'business-checkout' workspace.pk %}">{% csrf_token %}<input type="hidden" name="plan" value="{{ plan.pk }}"><button type="submit">Subscribe</button></form>
+        {% elif subscription.entitled %}
+          <p>Your workspace is subscribed to this service.</p>
+        {% endif %}
+      </article>
+    {% empty %}
+      <p>No subscription plans are available yet. Please contact Hearteli support.</p>
+    {% endfor %}
+  </div>
+  <p class="small">Need a custom organisation agreement? Contact Hearteli support.</p>
+</section>
+{% endblock %}

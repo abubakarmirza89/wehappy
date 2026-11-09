@@ -1,5 +1,6 @@
 from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
+import uuid
 import stripe
 from django.conf import settings
 from django.db import transaction
@@ -25,10 +26,12 @@ def owner_workspace(request, pk):
 @login_required(login_url='/work/login/')
 def billing_page(request, pk):
     workspace = owner_workspace(request, pk)
-    sub = BusinessSubscription.objects.filter(workspace=workspace).select_related('plan').first()
     from apps.tracking.business_web import workspace_context
     context=workspace_context(workspace,request.user,'billing')
     context.update(plans=BillingPlan.objects.filter(active=True),billing_ready=stripe_ready())
+    context['checkout_pending'] = request.GET.get('checkout') == 'success' and not (
+        context['subscription'] and context['subscription'].entitled
+    )
     return render(request,'work/billing.html',context)
 
 
@@ -36,33 +39,146 @@ def billing_page(request, pk):
 @login_required(login_url='/work/login/')
 @require_POST
 def checkout(request, pk):
-    owner_workspace(request,pk)
-    return HttpResponse('Organisation billing is managed manually by Hearteli administrators.',status=410)
+    workspace = owner_workspace(request, pk)
+    if not stripe_ready():
+        messages.error(request, 'Online subscriptions are not available right now. Please contact Hearteli support.')
+        return redirect('business-billing', pk=pk)
+
+    plan = BillingPlan.objects.filter(pk=request.POST.get('plan'), active=True).first()
+    if not plan:
+        messages.error(request, 'Choose an available subscription plan.')
+        return redirect('business-billing', pk=pk)
+    if plan.monthly_price <= Decimal('0'):
+        messages.error(request, 'This subscription plan is not configured for checkout. Please contact Hearteli support.')
+        return redirect('business-billing', pk=pk)
+
+    base_url = settings.HEARTELI_PUBLIC_URL.rstrip('/')
+    billing_url = f'{base_url}/work/{pk}/billing/'
+    try:
+        with transaction.atomic():
+            subscription, _ = BusinessSubscription.objects.select_for_update().get_or_create(
+                workspace=workspace,
+                defaults={'plan': plan},
+            )
+            if subscription.entitled:
+                messages.info(request, 'Your workspace already has an active subscription.')
+                return redirect('business-billing', pk=pk)
+            if subscription.checkout_session_id:
+                previous = stripe.checkout.Session.retrieve(
+                    subscription.checkout_session_id,
+                    api_key=settings.STRIPE_SECRET_KEY,
+                )
+                if previous.status == 'open':
+                    return redirect(previous.url)
+                if previous.status == 'complete':
+                    messages.info(request, 'Your payment is being confirmed. Refresh this page in a moment.')
+                    return redirect('business-billing', pk=pk)
+
+            subscription.plan = plan
+            price = (
+                {'price': plan.stripe_price_id, 'quantity': 1}
+                if plan.stripe_price_id
+                else {
+                    'price_data': {
+                        'currency': plan.currency.lower(),
+                        'unit_amount': int(plan.monthly_price * 100),
+                        'recurring': {'interval': 'month'},
+                        'product_data': {'name': plan.name},
+                    },
+                    'quantity': 1,
+                }
+            )
+            session = stripe.checkout.Session.create(
+                mode='subscription',
+                client_reference_id=str(workspace.pk),
+                line_items=[price],
+                customer=subscription.customer_id or None,
+                customer_email=None if subscription.customer_id else request.user.email,
+                subscription_data={
+                    'metadata': {
+                        'workspace_id': str(workspace.pk),
+                        'billing_plan_id': str(plan.pk),
+                    },
+                },
+                success_url=f'{billing_url}?checkout=success',
+                cancel_url=billing_url,
+                idempotency_key=f'hearteli-work-{workspace.pk}-{plan.pk}-{uuid.uuid4()}',
+                api_key=settings.STRIPE_SECRET_KEY,
+            )
+            subscription.checkout_session_id = session.id
+            subscription.save(update_fields=['plan', 'checkout_session_id'])
+    except stripe.StripeError:
+        messages.error(request, 'We could not start checkout. Please try again or contact Hearteli support.')
+        return redirect('business-billing', pk=pk)
+    return redirect(session.url)
 
 
 @login_required(login_url='/work/login/')
 @require_POST
 def portal(request, pk):
-    owner_workspace(request,pk)
-    return HttpResponse('Invoices and organisation subscriptions are managed manually.',status=410)
+    workspace = owner_workspace(request, pk)
+    if not stripe_ready():
+        messages.error(request, 'Online subscription management is not available right now. Please contact Hearteli support.')
+        return redirect('business-billing', pk=pk)
+    subscription = BusinessSubscription.objects.filter(workspace=workspace).first()
+    if not subscription or not subscription.customer_id:
+        messages.error(request, 'There is no online subscription to manage yet.')
+        return redirect('business-billing', pk=pk)
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=subscription.customer_id,
+            return_url=f'{settings.HEARTELI_PUBLIC_URL.rstrip("/")}/work/{pk}/billing/',
+            api_key=settings.STRIPE_SECRET_KEY,
+        )
+    except stripe.StripeError:
+        messages.error(request, 'We could not open subscription management. Please try again or contact Hearteli support.')
+        return redirect('business-billing', pk=pk)
+    return redirect(session.url)
 
 
 
 def update_subscription(remote):
     # Always retrieve current provider state, so delayed events cannot restore stale access.
-    sub=BusinessSubscription.objects.select_for_update().filter(customer_id=remote['customer']).first()
+    customer = remote.get('customer')
+    if isinstance(customer, dict):
+        customer = customer.get('id')
+    metadata = remote.get('metadata', {})
+    workspace_id = metadata.get('workspace_id')
+    from django.db.models import Q
+    lookup = Q(customer_id=customer) if customer else Q()
+    if workspace_id:
+        lookup |= Q(workspace_id=workspace_id)
+    if not lookup:
+        return
+    sub=BusinessSubscription.objects.select_for_update().filter(lookup).first()
     if not sub: return
-    metadata=remote.get('metadata',{})
-    if str(sub.workspace_id)!=str(metadata.get('workspace_id')): return
+    if workspace_id and str(sub.workspace_id)!=str(workspace_id): return
+    if sub.customer_id and customer and sub.customer_id != customer: return
     items=remote['items']['data']
     if len(items)!=1: return
     plan=BillingPlan.objects.filter(stripe_price_id=items[0]['price']['id']).first()
+    if not plan and metadata.get('billing_plan_id'):
+        plan=BillingPlan.objects.filter(pk=metadata['billing_plan_id']).first()
     if not plan: return
     if remote.get('currency') and remote['currency']!=plan.currency: return
     sub.plan=plan;sub.stripe_subscription_id=remote['id'];sub.status=remote['status']
+    if customer:
+        sub.customer_id=customer
+    if remote['status'] in ('active','trialing'):
+        sub.manual_status='active'
+        sub.billing_status='paid'
+        if not sub.paid_at:
+            sub.paid_at=datetime.now(dt_timezone.utc)
+    elif remote['status']=='canceled':
+        sub.manual_status='expired'
+        sub.billing_status='unpaid'
+    else:
+        sub.manual_status='suspended'
+        sub.billing_status='overdue' if remote['status']=='past_due' else 'unpaid'
     end=remote.get('current_period_end') or items[0].get('current_period_end')
     sub.period_end=datetime.fromtimestamp(end,dt_timezone.utc) if end else None
-    sub.cancel_at_period_end=remote.get('cancel_at_period_end',False);sub.save()
+    sub.cancel_at_period_end=remote.get('cancel_at_period_end',False)
+    sub.save()
     from .communications import queue_email
     queue_email(sub.workspace.owner,'subscription','Your Hearteli workspace subscription update',
         f'Your workspace subscription is {sub.status}. Open billing to review renewal, invoices or payment details.',

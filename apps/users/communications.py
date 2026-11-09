@@ -116,6 +116,47 @@ def password_changed(user):
         key=f'password-changed:{user.pk}:{uuid.uuid4()}')
 
 
+def send_circle_signup_invitation(invitation):
+    from urllib.parse import urljoin
+
+    from django.core.mail import EmailMultiAlternatives
+
+    inviter_name = invitation.owner.name
+    subject = 'You’re invited to join a Circle on Hearteli'
+    message = (
+        f'{inviter_name} invited you to join their trusted Circle on Hearteli. '
+        f'Create an account with {invitation.email} to review their invitation. '
+        'You can choose whether to accept, and you will not be connected unless you do.'
+    )
+    url = settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/'
+    context = {
+        'subject': subject,
+        'message': message,
+        'url': url,
+        'cta_label': 'Get started with Hearteli',
+        'logo_url': urljoin(
+            settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/',
+            static('hearteli/logo.png').lstrip('/'),
+        ),
+        'footer_text': 'This invitation is available for 30 days.',
+        'email_signature': EMAIL_SIGNATURE,
+        'security': False,
+    }
+    text = f'{message}\n\nGet started with Hearteli: {url}\n\n{email_signature_text()}'
+    email = EmailMultiAlternatives(
+        subject,
+        text,
+        settings.DEFAULT_FROM_EMAIL,
+        [invitation.email],
+    )
+    email.attach_alternative(
+        render_to_string('emails/transactional.html', context),
+        'text/html',
+    )
+    if email.send(fail_silently=False) != 1:
+        raise RuntimeError('SMTP server did not accept the Circle signup invitation.')
+
+
 def delivery_allowed(delivery):
     """Recheck preferences and consent immediately before sending a queued event."""
     from apps.tracking.models import (

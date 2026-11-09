@@ -359,6 +359,21 @@ class CircleInviteCode(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class CircleSignupInvitation(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_circle_signup_invitations')
+    email = models.EmailField()
+    relationship = models.CharField(max_length=40, default='Friend')
+    expires_at = models.DateTimeField()
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['owner', 'email'], name='hearteli_unique_circle_signup_invite'),
+        ]
+
+
 class EmpathyNudge(models.Model):
     support_context=models.CharField(max_length=12,default='unknown',choices=[('unknown','Unknown'),('ordinary','Ordinary support'),('safety','Safety pathway')])
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_sent')

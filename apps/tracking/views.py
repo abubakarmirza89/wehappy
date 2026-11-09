@@ -317,9 +317,6 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
         return (owned | member).distinct()
 
     def perform_create(self, serializer):
-        if serializer.validated_data.get('workspace_type')=='office' and not self.request.user.is_staff:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied('Pilot organisations are created by Hearteli administrators.')
         workspace = serializer.save(owner=self.request.user)
         if workspace.workspace_type == Workspace.WORKSPACE_TYPE_OFFICE:
             workspace.subscription_plan = Workspace.SUBSCRIPTION_PLAN_OFFICE_20

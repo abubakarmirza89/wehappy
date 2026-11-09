@@ -128,11 +128,12 @@ class MonetisationTests(TestCase):
         self.assertTrue(Appointment.objects.filter(pk=a.pk).exists())
         self.assertEqual(EmailDelivery.objects.filter(kind='activity_confirmation',channel='email',recipient=self.therapist).count(),1)
         self.assertEqual(EmailDelivery.objects.filter(kind='inactive_provider',channel='email',recipient=self.admin).count(),1)
+    @override_settings(STRIPE_SECRET_KEY='',STRIPE_WEBHOOK_SECRET='')
     def test_manual_entitlements_ignore_stripe_status(self):
         w=Workspace.objects.create(owner=self.user,name='Manual Pilot',workspace_type='office');sub=active_subscription(w);sub.manual_status='suspended';sub.status='active';sub.save()
         self.assertFalse(sub.entitled)
         self.client.force_login(self.user)
-        self.assertEqual(self.client.post(f'/work/{w.pk}/billing/checkout/',{'plan':sub.plan_id}).status_code,410)
+        self.assertEqual(self.client.post(f'/work/{w.pk}/billing/checkout/',{'plan':sub.plan_id}).status_code,302)
     def test_expiry_hides_organisation_resources_without_touching_personal_data(self):
         from apps.tracking.models import WorkspaceResource
         w=Workspace.objects.create(owner=self.user,name='Resource Pilot',workspace_type='office')

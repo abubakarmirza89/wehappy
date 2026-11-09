@@ -1,8 +1,13 @@
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core import mail
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
-from apps.tracking.models import CircleConnection, CircleInviteCode, Mood, MoodCheckIn, EmpathyNudge, Suggestion, Message, ConsentEvent
+from apps.tracking.models import (CircleConnection, CircleInviteCode,
+                                  CircleSignupInvitation, Mood, MoodCheckIn,
+                                  EmpathyNudge, Suggestion, Message,
+                                  ConsentEvent)
 from apps.users.models import EmailDelivery, Notification, Send_To_Relative
 from datetime import timedelta
 import uuid
@@ -137,6 +142,67 @@ class HearteliConsentTests(APITestCase):
                 target_id=connection.id,
             ).exists()
         )
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        HEARTELI_PUBLIC_URL='https://hearteli.example',
+    )
+    def test_non_member_signup_invite_emails_inviter_and_creates_pending_circle_on_signup(self):
+        response = self.client.post(
+            '/api/tracking/hearteli/circle/invite-signup/',
+            {'email': 'new-person@example.com', 'relationship': 'Friend'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        invitation = CircleSignupInvitation.objects.get(email='new-person@example.com')
+        self.assertIsNotNone(invitation.last_sent_at)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['new-person@example.com'])
+        self.assertIn(self.sender.name, mail.outbox[0].body)
+        self.assertIn('new-person@example.com', mail.outbox[0].body)
+        self.assertIn('https://hearteli.example/', mail.outbox[0].body)
+        self.assertIn('Warm regards,\nThe Hearteli Team', mail.outbox[0].body)
+
+        new_member = User.objects.create_user(
+            email='new-person@example.com',
+            name='New Circle Member',
+            password='strongpassword',
+            phone_number='789',
+        )
+        invitation.refresh_from_db()
+        connection = CircleConnection.objects.get(
+            owner=self.sender,
+            recipient=new_member,
+        )
+        self.assertEqual(connection.relationship, 'Friend')
+        self.assertIsNone(connection.accepted_at)
+        self.assertFalse(connection.may_receive_nudges)
+        self.assertIsNotNone(invitation.claimed_at)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_signup_invite_rejects_existing_members_and_recent_resends(self):
+        url = '/api/tracking/hearteli/circle/invite-signup/'
+        existing = self.client.post(
+            url,
+            {'email': self.recipient.email},
+            format='json',
+        )
+        self.assertEqual(existing.status_code, 400)
+        self.assertFalse(CircleSignupInvitation.objects.exists())
+
+        first = self.client.post(
+            url,
+            {'email': 'new-person@example.com'},
+            format='json',
+        )
+        self.assertEqual(first.status_code, 201)
+        resend = self.client.post(
+            url,
+            {'email': 'new-person@example.com'},
+            format='json',
+        )
+        self.assertEqual(resend.status_code, 400)
 
     def test_nudge_requires_recipient_acceptance_and_respects_revoke(self):
         connection = CircleConnection.objects.create(owner=self.sender, recipient=self.recipient)
