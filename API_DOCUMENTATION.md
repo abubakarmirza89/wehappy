@@ -78,6 +78,12 @@ This document lists the main API endpoints for the WeHappy app.
 ## Tracking APIs
 
 ### Hearteli Circle invitations
+- POST /api/tracking/hearteli/circle/
+  - Requires authentication. Invite an existing member with `{ "recipient_email_input": "person@example.com", "relationship": "Friend" }`.
+  - Returns 404 for an address without an active Hearteli account.
+- POST /api/tracking/hearteli/circle/invite-signup/
+  - Requires authentication. Body: `{ "email": "person@example.com", "relationship": "Friend" }`.
+  - Sends a branded signup invitation. Invitations can be resent after 24 hours, are limited to 10 per owner per day, and attach a pending Circle invite when the recipient signs up with the invited address within 30 days. The recipient must still accept.
 - POST /api/tracking/hearteli/circle/invite-code/
   - Requires authentication.
   - Returns a unique, single-use 20-character code that expires after 10 minutes. A newly issued code invalidates the owner's earlier unused code.
@@ -136,6 +142,7 @@ This document lists the main API endpoints for the WeHappy app.
 ### Workspaces
 - GET /api/tracking/workspaces/
 - POST /api/tracking/workspaces/
+  - An authenticated user can create an office workspace. Paid workplace features remain gated until the owner subscribes.
 - POST /api/tracking/workspaces/join/
 - POST /api/tracking/workspaces/<id>/approve_member/
 - POST /api/tracking/workspaces/<id>/toggle_consent/

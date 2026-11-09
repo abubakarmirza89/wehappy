@@ -38,6 +38,7 @@ class WorkConsoleTests(TestCase):
         self.assertNotContains(response, 'Invite a member')
 
     def test_new_owner_can_register_and_create_workplace(self):
+        self.assertContains(self.client.get('/work/register/'), 'Create a therapist account and apply')
         response = self.client.post('/work/register/', {
             'name': 'New Owner', 'email': 'new-owner@hearteli.test',
             'phone_number': '+923001234563', 'password': 'StrongerPass123!',
@@ -53,7 +54,6 @@ class WorkConsoleTests(TestCase):
         self.assertContains(self.client.get(f'/work/{workspace.pk}/'), 'Subscribe to activate this workspace')
         self.assertContains(self.client.get(f'/work/{workspace.pk}/billing/'), 'Available plans')
         self.assertFalse(BusinessSubscription.objects.filter(workspace=workspace).exists())
-        self.assertContains(self.client.get('/work/register/'), 'Create a therapist account and apply')
 
     def test_owner_resources_role_audit_and_private_dashboard(self):
         self.client.force_login(self.owner)

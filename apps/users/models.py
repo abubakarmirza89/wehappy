@@ -351,7 +351,15 @@ class BusinessSubscription(models.Model):
         return 'active' if self.entitled else 'suspended'
     @property
     def entitled(self):
-        return self.workspace.is_active and self.organisation_status=='active' and self.manual_status=='active' and self.starts_at<=timezone.now() and self.period_end is not None and self.period_end>timezone.now()
+        return (
+            self.workspace.is_active
+            and self.organisation_status == 'active'
+            and self.manual_status == 'active'
+            and (not self.stripe_subscription_id or self.status in ('active', 'trialing'))
+            and self.starts_at <= timezone.now()
+            and self.period_end is not None
+            and self.period_end > timezone.now()
+        )
 
 
 class PaymentEvent(models.Model):

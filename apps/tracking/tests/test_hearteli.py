@@ -148,6 +148,13 @@ class HearteliConsentTests(APITestCase):
         HEARTELI_PUBLIC_URL='https://hearteli.example',
     )
     def test_non_member_signup_invite_emails_inviter_and_creates_pending_circle_on_signup(self):
+        unknown_member = self.client.post(
+            '/api/tracking/hearteli/circle/',
+            {'recipient_email_input': 'new-person@example.com'},
+            format='json',
+        )
+        self.assertEqual(unknown_member.status_code, 404)
+
         response = self.client.post(
             '/api/tracking/hearteli/circle/invite-signup/',
             {'email': 'new-person@example.com', 'relationship': 'Friend'},

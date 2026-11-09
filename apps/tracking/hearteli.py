@@ -5,13 +5,14 @@ never serialized to recipients or copied into the nudge payload.
 """
 import hashlib
 import secrets
+from smtplib import SMTPException
 from datetime import timedelta
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, ValidationError, PermissionDenied
+from rest_framework.exceptions import APIException, NotFound, ValidationError, PermissionDenied
 from rest_framework.response import Response
 
 from .models import (CircleConnection, CircleSignupInvitation, ConsentEvent, EmpathyNudge,
@@ -26,6 +27,13 @@ CIRCLE_INVITE_LENGTH = 20
 CIRCLE_INVITE_LIFETIME = timedelta(minutes=10)
 CIRCLE_SIGNUP_INVITE_LIFETIME = timedelta(days=30)
 CIRCLE_SIGNUP_INVITE_COOLDOWN = timedelta(hours=24)
+CIRCLE_SIGNUP_INVITE_DAILY_LIMIT = 10
+
+
+class CircleSignupInviteDeliveryError(APIException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = 'The invitation email could not be sent. Please try again later.'
+    default_code = 'signup_invite_email_unavailable'
 
 
 class ConnectionSerializer(serializers.ModelSerializer):
@@ -133,10 +141,19 @@ class ConnectionViewSet(viewsets.ModelViewSet):
                 raise ValidationError({'email': 'This invitation has already been accepted by an account.'})
             if invitation.last_sent_at and invitation.last_sent_at > now - CIRCLE_SIGNUP_INVITE_COOLDOWN:
                 raise ValidationError({'email': 'An invitation was sent to this address recently. Try again tomorrow.'})
+            sent_today = CircleSignupInvitation.objects.filter(
+                owner=request.user,
+                last_sent_at__gte=now - CIRCLE_SIGNUP_INVITE_COOLDOWN,
+            ).count()
+            if sent_today >= CIRCLE_SIGNUP_INVITE_DAILY_LIMIT:
+                raise ValidationError({'email': 'You have reached today’s signup invitation limit. Try again tomorrow.'})
 
             invitation.relationship = relationship
             invitation.expires_at = now + CIRCLE_SIGNUP_INVITE_LIFETIME
-            send_circle_signup_invitation(invitation)
+            try:
+                send_circle_signup_invitation(invitation)
+            except (OSError, SMTPException, RuntimeError) as exc:
+                raise CircleSignupInviteDeliveryError() from exc
             invitation.last_sent_at = now
             invitation.save(update_fields=['relationship', 'expires_at', 'last_sent_at'])
 

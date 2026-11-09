@@ -30,7 +30,7 @@ Withdrawals are administrator-reviewed, **not automatic Stripe Connect transfers
 
 `/work/` selects the workspace. The console has separate Overview, Members & roles, Support resources, Insights & privacy, Workspace settings, and Plans/invoices/billing pages. Owners can invite/approve existing users, change roles, deactivate members, configure resources and edit workspace details. Managers cannot access owner billing or perform owner mutations. Emotional histories remain private.
 
-`BillingPlan` is administrator-configured: name, real Stripe recurring monthly Price ID, amount/currency, and seat limit. Prices were not invented or enabled automatically. Checkout checks that the provider Price matches the configured displayed monthly amount/currency. Existing subscriptions are managed with the Stripe Customer Portal for payment method, invoices, upgrades and cancellation; configure the allowed prices in the Stripe portal as well.
+`BillingPlan` records the plan name, optional Stripe recurring monthly Price ID, amount/currency, and seat limit. A default USD 20/month, 20-seat plan is seeded only when no active plans exist; administrators can add or adjust plans. Checkout uses the configured recurring Price ID when present, or creates recurring `price_data` from the displayed amount/currency. Existing online subscriptions can be managed with the Stripe Customer Portal for payment method, invoices and cancellation; configure the portal before enabling billing.
 
 Active/trialing provider state plus an unexpired period are required for paid access. Membership invitations/approval and resource publishing are gated on the server; client UI state cannot grant entitlements. Seat checks include pending memberships, and bulk invitations recheck capacity under a workspace lock. Cancellation, expiry and past-due subscriptions lose paid write access while owners can still review their workspace and open billing. Deactivation and removal remain available. Existing workspaces without a verified subscription now require activation for paid actions; this is an intentional behavior change.
 
@@ -38,10 +38,10 @@ Signed subscription/invoice webhooks retrieve current provider state before chan
 
 ## Deployment
 
-1. Apply all migrations (`users` 0004–0007 and any earlier unapplied migrations).
+1. Apply all migrations, including the default workplace-plan data migration.
 2. Configure a verified HTTPS `HEARTELI_PUBLIC_URL`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLIC_KEY`, `STRIPE_WEBHOOK_SECRET` and `HEARTELI_CURRENCY` (USD in current UI).
 3. Register the signing endpoint `/api/users/webhook/stripe/`. Subscribe to checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, charge.refunded, customer.subscription events, invoice.paid and invoice.payment_failed.
-4. Create approved recurring monthly Prices in Stripe and matching active BillingPlan records. Configure the Stripe Customer Portal, invoice details and permitted prices.
+4. Configure the Stripe Customer Portal, invoice details and permitted prices. Verify active BillingPlan records and any configured recurring Price IDs.
 5. Run existing email/push workers. Configure native Firebase and verified SMTP independently; no live notifications were sent during this change.
 6. Complete a test-mode booking/payment/refund, subscription renewal/cancellation, paid-access failure and a manually reconciled payout with your account before enabling live billing.
 

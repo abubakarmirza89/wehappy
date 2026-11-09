@@ -28,7 +28,10 @@ def billing_page(request, pk):
     workspace = owner_workspace(request, pk)
     from apps.tracking.business_web import workspace_context
     context=workspace_context(workspace,request.user,'billing')
-    context.update(plans=BillingPlan.objects.filter(active=True),billing_ready=stripe_ready())
+    context.update(
+        plans=BillingPlan.objects.filter(active=True).order_by('monthly_price', 'member_limit'),
+        billing_ready=stripe_ready(),
+    )
     context['checkout_pending'] = request.GET.get('checkout') == 'success' and not (
         context['subscription'] and context['subscription'].entitled
     )
@@ -51,6 +54,24 @@ def checkout(request, pk):
     if plan.monthly_price <= Decimal('0'):
         messages.error(request, 'This subscription plan is not configured for checkout. Please contact Hearteli support.')
         return redirect('business-billing', pk=pk)
+    if plan.stripe_price_id:
+        try:
+            stripe_price = stripe.Price.retrieve(
+                plan.stripe_price_id,
+                api_key=settings.STRIPE_SECRET_KEY,
+            )
+        except stripe.StripeError:
+            messages.error(request, 'We could not verify this subscription price. Please contact Hearteli support.')
+            return redirect('business-billing', pk=pk)
+        recurring = stripe_price.get('recurring') or {}
+        if not (
+            stripe_price.get('active')
+            and recurring.get('interval') == 'month'
+            and stripe_price.get('unit_amount') == int(plan.monthly_price * 100)
+            and stripe_price.get('currency', '').lower() == plan.currency.lower()
+        ):
+            messages.error(request, 'This plan’s Stripe price must be active, monthly, and match the listed price and currency.')
+            return redirect('business-billing', pk=pk)
 
     base_url = settings.HEARTELI_PUBLIC_URL.rstrip('/')
     billing_url = f'{base_url}/work/{pk}/billing/'
@@ -58,7 +79,7 @@ def checkout(request, pk):
         with transaction.atomic():
             subscription, _ = BusinessSubscription.objects.select_for_update().get_or_create(
                 workspace=workspace,
-                defaults={'plan': plan},
+                defaults={'plan': plan, 'manual_status': 'active'},
             )
             if subscription.entitled:
                 messages.info(request, 'Your workspace already has an active subscription.')
@@ -165,15 +186,12 @@ def update_subscription(remote):
     if customer:
         sub.customer_id=customer
     if remote['status'] in ('active','trialing'):
-        sub.manual_status='active'
         sub.billing_status='paid'
         if not sub.paid_at:
             sub.paid_at=datetime.now(dt_timezone.utc)
     elif remote['status']=='canceled':
-        sub.manual_status='expired'
         sub.billing_status='unpaid'
     else:
-        sub.manual_status='suspended'
         sub.billing_status='overdue' if remote['status']=='past_due' else 'unpaid'
     end=remote.get('current_period_end') or items[0].get('current_period_end')
     sub.period_end=datetime.fromtimestamp(end,dt_timezone.utc) if end else None

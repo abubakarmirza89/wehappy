@@ -81,9 +81,16 @@ class PracticeBillingTests(TestCase):
 
     @override_settings(STRIPE_SECRET_KEY='sk_test', STRIPE_WEBHOOK_SECRET='whsec_test')
     @patch('apps.users.billing.stripe.checkout.Session.create')
-    def test_business_checkout_creates_stripe_subscription_session(self, create):
+    @patch('apps.users.billing.stripe.Price.retrieve')
+    def test_business_checkout_creates_stripe_subscription_session(self, create, retrieve):
         create.return_value.id='cs_workspace'
         create.return_value.url='https://checkout.stripe.test/session'
+        retrieve.return_value={
+            'active':True,
+            'recurring':{'interval':'month'},
+            'unit_amount':2000,
+            'currency':'usd',
+        }
         self.client.force_login(self.member)
 
         response=self.client.post(
@@ -189,6 +196,57 @@ class PracticeBillingTests(TestCase):
         remote['status']='active';construct.return_value['id']='evt_sub2'
         self.client.post('/api/users/webhook/stripe/',data='{}',content_type='application/json')
         sub.refresh_from_db();self.assertFalse(sub.entitled) # Stripe state must not activate a manual entitlement
+
+    @patch('apps.users.billing.stripe.Subscription.retrieve')
+    @patch('apps.users.billing.stripe.Webhook.construct_event')
+    def test_self_service_stripe_subscription_activates_and_expires_access(self,construct,retrieve):
+        subscription=BusinessSubscription.objects.create(
+            workspace=self.workspace,
+            plan=self.plan,
+            manual_status='active',
+        )
+        period_end=int((timezone.now()+timedelta(days=30)).timestamp())
+        remote={
+            'id':'sub_self_service',
+            'customer':'cus_self_service',
+            'status':'active',
+            'metadata':{
+                'workspace_id':str(self.workspace.pk),
+                'billing_plan_id':str(self.plan.pk),
+            },
+            'items':{'data':[{
+                'price':{'id':self.plan.stripe_price_id},
+                'current_period_end':period_end,
+            }]},
+            'current_period_end':period_end,
+            'currency':'usd',
+        }
+        retrieve.return_value=remote
+        construct.return_value={
+            'id':'evt_self_service',
+            'type':'customer.subscription.updated',
+            'data':{'object':{'id':'sub_self_service'}},
+        }
+
+        self.client.post(
+            '/api/users/webhook/stripe/',
+            data='{}',
+            content_type='application/json',
+        )
+
+        subscription.refresh_from_db()
+        self.assertTrue(subscription.entitled)
+        self.assertEqual(subscription.customer_id,'cus_self_service')
+        self.assertEqual(subscription.status,'active')
+        remote['status']='past_due'
+        construct.return_value['id']='evt_self_service_past_due'
+        self.client.post(
+            '/api/users/webhook/stripe/',
+            data='{}',
+            content_type='application/json',
+        )
+        subscription.refresh_from_db()
+        self.assertFalse(subscription.entitled)
 
     def test_admin_approval_enables_role_and_profile(self):
         from apps.users.admin import TherapistApplicationAdmin

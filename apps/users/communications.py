@@ -125,24 +125,24 @@ def send_circle_signup_invitation(invitation):
     subject = 'You’re invited to join a Circle on Hearteli'
     message = (
         f'{inviter_name} invited you to join their trusted Circle on Hearteli. '
-        f'Create an account with {invitation.email} to review their invitation. '
-        'You can choose whether to accept, and you will not be connected unless you do.'
+        f'Download the Hearteli app and create an account with {invitation.email}. '
+        'You can review the invitation in the app and choose whether to accept.'
     )
     url = settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/'
     context = {
         'subject': subject,
         'message': message,
         'url': url,
-        'cta_label': 'Get started with Hearteli',
+        'cta_label': 'Visit Hearteli',
         'logo_url': urljoin(
             settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/',
             static('hearteli/logo.png').lstrip('/'),
         ),
-        'footer_text': 'This invitation is available for 30 days.',
+        'footer_text': 'Your Circle invitation will be available for 30 days.',
         'email_signature': EMAIL_SIGNATURE,
         'security': False,
     }
-    text = f'{message}\n\nGet started with Hearteli: {url}\n\n{email_signature_text()}'
+    text = f'{message}\n\nVisit Hearteli: {url}\n\n{email_signature_text()}'
     email = EmailMultiAlternatives(
         subject,
         text,
