@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from apps.users.models import BusinessSubscription
 from apps.users.tests.billing_helpers import active_subscription
 
 from apps.tracking.models import Workspace, WorkspaceMembership, WorkspaceResource, WorkspaceRoleAudit
@@ -51,7 +52,8 @@ class WorkConsoleTests(TestCase):
             status=WorkspaceMembership.STATUS_APPROVED).exists())
         self.assertContains(self.client.get(f'/work/{workspace.pk}/'), 'Subscribe to activate this workspace')
         self.assertContains(self.client.get(f'/work/{workspace.pk}/billing/'), 'Available plans')
-        self.assertFalse(workspace.billing.entitled if hasattr(workspace, 'billing') else False)
+        self.assertFalse(BusinessSubscription.objects.filter(workspace=workspace).exists())
+        self.assertContains(self.client.get('/work/register/'), 'Create a therapist account and apply')
 
     def test_owner_resources_role_audit_and_private_dashboard(self):
         self.client.force_login(self.owner)

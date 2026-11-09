@@ -1,6 +1,6 @@
 from datetime import date,timedelta
 import hashlib
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from apps.users.models import *

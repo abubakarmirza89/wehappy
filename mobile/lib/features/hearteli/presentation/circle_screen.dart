@@ -194,8 +194,9 @@ class _CircleScreenState extends State<CircleScreen> {
                                           update(() => inviteError = '$e');
                                         }
                                       } finally {
-                                        if (dialog.mounted)
+                                        if (dialog.mounted) {
                                           update(() => sending = false);
+                                        }
                                       }
                                     },
                             icon: const Icon(Icons.person_add_alt_1),
@@ -255,8 +256,9 @@ class _CircleScreenState extends State<CircleScreen> {
                                     });
                                   }
                                 } finally {
-                                  if (dialog.mounted)
+                                  if (dialog.mounted) {
                                     update(() => sending = false);
+                                  }
                                 }
                               },
                       child:

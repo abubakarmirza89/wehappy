@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 from unittest.mock import patch
 
 from apps.tracking.models import ChatConversation, ChatMessage, Mood, MoodCheckIn, Relative, Workspace, WorkspaceMembership, GratitudeEntry
+from apps.users.models import BusinessSubscription
 
 User = get_user_model()
 
@@ -43,7 +44,7 @@ class WorkspaceAndNotificationAPITests(APITestCase):
                 workspace__name="Team Wellness", user=self.owner, role=WorkspaceMembership.ROLE_OWNER
             ).exists()
         )
-        self.assertFalse(hasattr(Workspace.objects.get(name="Team Wellness"), "billing"))
+        self.assertFalse(BusinessSubscription.objects.filter(workspace__name="Team Wellness").exists())
 
     def test_member_can_join_workspace_via_invite_code(self):
         self.client.force_authenticate(user=self.owner)
