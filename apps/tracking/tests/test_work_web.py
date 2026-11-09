@@ -85,3 +85,18 @@ class WorkConsoleTests(TestCase):
             phone_number='+923001234562', password='StrongPass123')
         self.client.force_login(outsider)
         self.assertEqual(self.client.get(f'/api/tracking/workspace-resources/{resource.pk}/').status_code, 404)
+
+    def test_resource_api_hides_content_when_stripe_subscription_is_past_due(self):
+        resource = WorkspaceResource.objects.create(
+            workspace=self.workspace, title='Support', url='https://example.com'
+        )
+        subscription = BusinessSubscription.objects.get(workspace=self.workspace)
+        subscription.stripe_subscription_id = 'sub_past_due'
+        subscription.status = 'past_due'
+        subscription.save(update_fields=['stripe_subscription_id', 'status'])
+
+        self.client.force_login(self.owner)
+        response = self.client.get('/api/tracking/workspace-resources/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])

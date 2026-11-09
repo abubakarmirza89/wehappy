@@ -82,7 +82,7 @@ class PracticeBillingTests(TestCase):
     @override_settings(STRIPE_SECRET_KEY='sk_test', STRIPE_WEBHOOK_SECRET='whsec_test')
     @patch('apps.users.billing.stripe.checkout.Session.create')
     @patch('apps.users.billing.stripe.Price.retrieve')
-    def test_business_checkout_creates_stripe_subscription_session(self, create, retrieve):
+    def test_business_checkout_creates_stripe_subscription_session(self, retrieve, create):
         create.return_value.id='cs_workspace'
         create.return_value.url='https://checkout.stripe.test/session'
         retrieve.return_value={
@@ -109,6 +109,29 @@ class PracticeBillingTests(TestCase):
         self.assertEqual(
             create.call_args.kwargs['subscription_data']['metadata']['billing_plan_id'],
             str(self.plan.pk),
+        )
+
+    @override_settings(STRIPE_SECRET_KEY='sk_test', STRIPE_WEBHOOK_SECRET='whsec_test')
+    @patch('apps.users.billing.stripe.checkout.Session.create')
+    @patch('apps.users.billing.stripe.Price.retrieve')
+    def test_business_checkout_rejects_a_mismatched_stripe_price(self, retrieve, create):
+        retrieve.return_value={
+            'active':True,
+            'recurring':{'interval':'month'},
+            'unit_amount':1900,
+            'currency':'usd',
+        }
+        self.client.force_login(self.member)
+
+        response=self.client.post(
+            f'/work/{self.workspace.pk}/billing/checkout/', {'plan':self.plan.pk}
+        )
+
+        self.assertEqual(response.status_code,302)
+        create.assert_not_called()
+        self.assertContains(
+            self.client.get(response['Location']),
+            'must be active, monthly, and match the listed price',
         )
     def test_gated_write_and_seat_limit(self):
         self.plan.member_limit=1;self.plan.save()

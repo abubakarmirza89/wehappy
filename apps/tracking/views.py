@@ -583,7 +583,24 @@ class WorkspaceResourceViewSet(viewsets.ModelViewSet):
         ).distinct()
         if self.request.method in ("GET","HEAD"):
             now=timezone.now()
-            queryset=queryset.filter(~Q(workspace__workspace_type="office") | Q(workspace__is_active=True,workspace__billing__manual_status="active",workspace__billing__organisation_status="active",workspace__billing__starts_at__lte=now,workspace__billing__period_end__gt=now))
+            stripe_subscription_current = (
+                Q(workspace__billing__stripe_subscription_id__isnull=True)
+                | Q(workspace__billing__stripe_subscription_id="")
+                | Q(workspace__billing__status__in=("active", "trialing"))
+            )
+            queryset=queryset.filter(
+                ~Q(workspace__workspace_type="office")
+                | (
+                    Q(
+                        workspace__is_active=True,
+                        workspace__billing__manual_status="active",
+                        workspace__billing__organisation_status="active",
+                        workspace__billing__starts_at__lte=now,
+                        workspace__billing__period_end__gt=now,
+                    )
+                    & stripe_subscription_current
+                )
+            )
         return queryset
 
     def perform_create(self, serializer):
