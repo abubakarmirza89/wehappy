@@ -69,8 +69,10 @@ def register(request):
     if request.user.is_authenticated:
         return redirect('hearteli-work-index')
     form = OwnerRegistrationForm(request.POST or None)
-    invitation_token = (request.POST.get('invite') if request.method == 'POST'
-                        else request.GET.get('invite', '')).strip()
+    invitation_token = (
+        request.POST.get('invite', '') if request.method == 'POST'
+        else request.GET.get('invite', '')
+    ).strip()
     invitation = None
     invitation_invalid = False
     if invitation_token:

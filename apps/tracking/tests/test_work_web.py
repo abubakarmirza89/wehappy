@@ -1,9 +1,18 @@
+import hashlib
+from urllib.parse import parse_qs, urlparse
+from datetime import timedelta
+
+from django.core import mail
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.utils import timezone
 from apps.users.models import BusinessSubscription
 from apps.users.tests.billing_helpers import active_subscription
 
-from apps.tracking.models import Workspace, WorkspaceMembership, WorkspaceResource, WorkspaceRoleAudit
+from apps.tracking.models import (
+    Workspace, WorkspaceMembership, WorkspaceResource, WorkspaceRoleAudit,
+    WorkspaceSignupInvitation,
+)
 
 
 class WorkConsoleTests(TestCase):
@@ -54,6 +63,98 @@ class WorkConsoleTests(TestCase):
         self.assertContains(self.client.get(f'/work/{workspace.pk}/'), 'Subscribe to activate this workspace')
         self.assertContains(self.client.get(f'/work/{workspace.pk}/billing/'), 'Available plans')
         self.assertFalse(BusinessSubscription.objects.filter(workspace=workspace).exists())
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        HEARTELI_PUBLIC_URL='https://hearteli.test',
+    )
+    def test_non_member_workspace_invite_emails_signup_link_and_claims_membership(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            f'/work/{self.workspace.pk}/invite/',
+            {'email': 'new-member@hearteli.test'},
+        )
+
+        self.assertRedirects(
+            response,
+            f'/work/{self.workspace.pk}/pages/members/',
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        invitation = WorkspaceSignupInvitation.objects.get(workspace=self.workspace)
+        self.assertEqual(invitation.email, 'new-member@hearteli.test')
+        self.assertIn(self.owner.name, mail.outbox[0].body)
+        self.assertIn(self.workspace.name, mail.outbox[0].body)
+        invite_url = next(
+            word for word in mail.outbox[0].body.split()
+            if word.startswith('https://hearteli.test/work/register/')
+        )
+        token = parse_qs(urlparse(invite_url).query)['invite'][0]
+        self.assertNotEqual(invitation.token_hash, token)
+
+        self.client.logout()
+        signup_page = self.client.get(f'/work/register/?invite={token}')
+        self.assertContains(signup_page, f'You’re invited by {self.owner.name}')
+        self.assertContains(signup_page, 'value="new-member@hearteli.test"')
+        response = self.client.post('/work/register/', {
+            'invite': token,
+            'name': 'Invited Member',
+            'email': 'new-member@hearteli.test',
+            'phone_number': '+923001234564',
+            'password': 'StrongerPass123!',
+            'confirm_password': 'StrongerPass123!',
+        })
+
+        self.assertRedirects(response, '/work/')
+        member = get_user_model().objects.get(email='new-member@hearteli.test')
+        membership = WorkspaceMembership.objects.get(workspace=self.workspace, user=member)
+        self.assertEqual(membership.status, WorkspaceMembership.STATUS_PENDING)
+        self.assertEqual(membership.invited_by, self.owner)
+        invitation.refresh_from_db()
+        self.assertIsNotNone(invitation.claimed_at)
+        self.assertContains(self.client.get('/work/'), self.workspace.name)
+        self.assertContains(self.client.get('/work/'), self.owner.name)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_invite_requires_subscription_with_readable_members_page_message(self):
+        BusinessSubscription.objects.filter(workspace=self.workspace).delete()
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            f'/work/{self.workspace.pk}/invite/',
+            {'email': 'new-member@hearteli.test'},
+        )
+        self.assertRedirects(
+            response,
+            f'/work/{self.workspace.pk}/pages/members/',
+            fetch_redirect_response=False,
+        )
+        response = self.client.get(f'/work/{self.workspace.pk}/pages/members/')
+        self.assertContains(response, 'An active subscription is required before you can invite members.')
+        self.assertContains(response, 'Go to Plans & billing')
+        self.assertNotContains(response, 'Send invitation')
+        self.assertEqual(mail.outbox, [])
+        self.assertFalse(WorkspaceSignupInvitation.objects.exists())
+
+    def test_invitation_signup_requires_the_invited_email_address(self):
+        invitation = WorkspaceSignupInvitation.objects.create(
+            workspace=self.workspace,
+            email='invited@hearteli.test',
+            invited_by=self.owner,
+            token_hash=hashlib.sha256(b'raw-invite-token').hexdigest(),
+            expires_at=timezone.now() + timedelta(days=1),
+        )
+        response = self.client.post('/work/register/', {
+            'invite': 'raw-invite-token',
+            'name': 'Wrong Email',
+            'email': 'someone-else@hearteli.test',
+            'phone_number': '+923001234564',
+            'password': 'StrongerPass123!',
+            'confirm_password': 'StrongerPass123!',
+        })
+        self.assertContains(response, 'Use the email address this workspace invitation was sent to.')
+        self.assertFalse(get_user_model().objects.filter(email='someone-else@hearteli.test').exists())
+        invitation.refresh_from_db()
+        self.assertIsNone(invitation.claimed_at)
 
     def test_owner_resources_role_audit_and_private_dashboard(self):
         self.client.force_login(self.owner)
