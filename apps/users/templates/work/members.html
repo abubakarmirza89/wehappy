@@ -1,5 +1,54 @@
 {% extends 'work/business_layout.html' %}
 {% block workspace_content %}
-<section class="panel"><h2>Members & permissions</h2><div class="scroll"><table><thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Manage</th></tr></thead><tbody>{% for m in members %}<tr><td>{{ m.user.name }}<p>{{ m.user.email }}</p></td><td>{{ m.role }}</td><td>{{ m.status }}</td><td>{% if is_owner and m.user_id != workspace.owner_id %}{% if m.status == 'pending' %}<form method="post" action="{% url 'hearteli-work-approve' workspace.pk m.pk %}">{% csrf_token %}<button>Approve</button></form>{% endif %}<form method="post" action="{% url 'hearteli-work-role' workspace.pk m.pk %}">{% csrf_token %}<select name="role"><option value="employee" {% if m.role == 'employee' %}selected{% endif %}>Employee</option><option value="manager" {% if m.role == 'manager' %}selected{% endif %}>Manager</option></select><button>Save role</button></form><form method="post" action="{% url 'business-deactivate' workspace.pk m.pk %}">{% csrf_token %}<button class="secondary">Deactivate</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% if is_owner %}<h3>Invite an existing Hearteli member</h3><form method="post" action="{% url 'hearteli-work-invite' workspace.pk %}">{% csrf_token %}<label>Email<input name="email" type="email" required></label><button>Send invitation</button></form>{% endif %}</section>
-
+<section class="panel">
+  <h2>Members & permissions</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Manage</th></tr></thead>
+      <tbody>
+        {% for m in members %}
+          <tr>
+            <td>{{ m.user.name }}<p>{{ m.user.email }}</p></td>
+            <td>{{ m.role }}</td>
+            <td>{{ m.status }}</td>
+            <td>
+              {% if is_owner and m.user_id != workspace.owner_id %}
+                {% if m.status == 'pending' %}
+                  <form method="post" action="{% url 'hearteli-work-approve' workspace.pk m.pk %}">{% csrf_token %}<button>Approve</button></form>
+                {% endif %}
+                <form method="post" action="{% url 'hearteli-work-role' workspace.pk m.pk %}">{% csrf_token %}<select name="role"><option value="employee" {% if m.role == 'employee' %}selected{% endif %}>Employee</option><option value="manager" {% if m.role == 'manager' %}selected{% endif %}>Manager</option></select><button>Save role</button></form>
+                <form method="post" action="{% url 'business-deactivate' workspace.pk m.pk %}">{% csrf_token %}<button class="secondary">Deactivate</button></form>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4">No members yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if signup_invitations %}
+    <h3>Awaiting Hearteli signup</h3>
+    <ul class="invitation-list">
+      {% for invitation in signup_invitations %}
+        <li>{{ invitation.email }} — invited by {{ invitation.invited_by.name|default:"workspace owner" }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% if is_owner %}
+    <h3>Invite a member by email</h3>
+    {% if subscription and subscription.entitled %}
+      <p>Already on Hearteli? They’ll get a workspace invitation. New to Hearteli? We’ll email them an invitation to sign up and join {{ workspace.name }}.</p>
+      <form method="post" action="{% url 'hearteli-work-invite' workspace.pk %}">
+        {% csrf_token %}
+        <label for="member-invite-email">Email address</label>
+        <input id="member-invite-email" name="email" type="email" required>
+        <button type="submit">Send invitation</button>
+      </form>
+    {% else %}
+      <p class="workspace-message error" role="alert">An active subscription is required before you can invite members. Choose a plan to activate invitations.</p>
+      <a class="button" href="{% url 'business-billing' workspace.pk %}">Go to Plans & billing</a>
+    {% endif %}
+  {% endif %}
+</section>
 {% endblock %}

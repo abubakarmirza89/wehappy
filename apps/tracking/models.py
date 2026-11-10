@@ -121,6 +121,24 @@ class WorkspaceMembership(models.Model):
         return f"{self.user.name} in {self.workspace.name} ({self.role})"
 
 
+class WorkspaceSignupInvitation(models.Model):
+    workspace = models.ForeignKey(
+        Workspace, related_name="signup_invitations", on_delete=models.CASCADE
+    )
+    email = models.EmailField()
+    invited_by = models.ForeignKey(
+        User, related_name="workspace_signup_invitations", on_delete=models.SET_NULL,
+        null=True, blank=True,
+    )
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class WorkspaceSupportRequest(models.Model):
     """Support suggestion request generated from a partner's mood state."""
     workspace = models.ForeignKey(Workspace, related_name="support_requests", on_delete=models.CASCADE)

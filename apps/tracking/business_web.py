@@ -10,6 +10,7 @@ from apps.users.models import BusinessSubscription
 from django import forms
 from django.contrib import messages
 from django.urls import reverse
+from django.utils import timezone
 from django.http import Http404
 from .models import Workspace
 
@@ -34,9 +35,12 @@ def workspace_context(workspace,user,section):
         navigation.append({'label':label,'url':url,'active':key==section})
     members=workspace.memberships.select_related('user')
     return {'workspace':workspace,'section':section,'page_title':PAGE_TITLES[section],
-        'current_time':__import__('django.utils.timezone',fromlist=['now']).now(),'is_owner':owner,'workspace_navigation':navigation,'members':members,
+        'current_time':timezone.now(),'is_owner':owner,'workspace_navigation':navigation,'members':members,
         'approved_count':members.filter(status='approved').count(),
         'pending_count':members.filter(status='pending').count(),
+        'signup_invitations':workspace.signup_invitations.filter(
+            claimed_at__isnull=True,expires_at__gt=timezone.now()
+        ).select_related('invited_by'),
         'resources':workspace.resources.all(),
         'subscription':BusinessSubscription.objects.filter(workspace=workspace).select_related('plan').first(),
         'role_events':workspace.role_events.select_related('actor','member').order_by('-created_at')[:30]}
@@ -51,7 +55,7 @@ def page(request,pk,section='overview'):
     if section=='settings' and not owner: return HttpResponseForbidden('Owner access required.')
     subscription=BusinessSubscription.objects.filter(workspace=workspace).first()
     if workspace.workspace_type=='office' and section=='resources' and (not subscription or not subscription.entitled):
-        return render(request,'work/benefit_unavailable.html',workspace_context(workspace,request.user,section),status=402)
+        return render(request,'work/benefit_unavailable.html',workspace_context(workspace,request.user,section))
     if request.method=='POST' and section!='settings': return HttpResponseForbidden('Use the section action form.')
     action=request.POST.get('action','details')
     settings_form=WorkspaceSettingsForm(request.POST if request.method=='POST' and action=='details' else None,instance=workspace)

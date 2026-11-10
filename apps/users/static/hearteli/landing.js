@@ -11,7 +11,11 @@
   }
   const menu = document.querySelector('.menu-toggle');
   const nav = document.getElementById('main-nav');
-  const closeMenu = () => { nav.classList.remove('open'); menu.setAttribute('aria-expanded', 'false'); };
+  const closeMenu = () => {
+    nav.classList.remove('open');
+    menu.setAttribute('aria-expanded', 'false');
+    nav.querySelectorAll('.login-menu[open]').forEach(loginMenu => { loginMenu.open = false; });
+  };
   menu.addEventListener('click', () => {
     const open = nav.classList.toggle('open'); menu.setAttribute('aria-expanded', String(open));
   });

@@ -157,6 +157,43 @@ def send_circle_signup_invitation(invitation):
         raise RuntimeError('SMTP server did not accept the Circle signup invitation.')
 
 
+def send_workspace_signup_invitation(invitation, token):
+    from django.urls import reverse
+
+    inviter_name = invitation.invited_by.name if invitation.invited_by else 'A Hearteli workspace owner'
+    subject = f'You’re invited to join {invitation.workspace.name} on Hearteli'
+    message = (
+        f'{inviter_name} invited you to join the {invitation.workspace.name} workspace on Hearteli. '
+        f'Create your account with {invitation.email} to continue.'
+    )
+    base_url = settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/'
+    signup_url = urljoin(base_url, reverse('hearteli-work-register').lstrip('/'))
+    url = f'{signup_url}?{urlencode({"invite": token})}'
+    context = {
+        'subject': subject,
+        'message': message,
+        'url': url,
+        'cta_label': 'Create your Hearteli account',
+        'logo_url': urljoin(base_url, static('hearteli/logo.png').lstrip('/')),
+        'footer_text': 'This workspace invitation expires in 30 days.',
+        'email_signature': EMAIL_SIGNATURE,
+        'security': False,
+    }
+    text = f'{message}\n\nCreate your account: {url}\n\n{email_signature_text()}'
+    email = EmailMultiAlternatives(
+        subject,
+        text,
+        settings.DEFAULT_FROM_EMAIL,
+        [invitation.email],
+    )
+    email.attach_alternative(
+        render_to_string('emails/transactional.html', context),
+        'text/html',
+    )
+    if email.send(fail_silently=False) != 1:
+        raise RuntimeError('SMTP server did not accept the workspace signup invitation.')
+
+
 def delivery_allowed(delivery):
     """Recheck preferences and consent immediately before sending a queued event."""
     from apps.tracking.models import (
