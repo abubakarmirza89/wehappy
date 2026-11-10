@@ -135,6 +135,10 @@ class WorkConsoleTests(TestCase):
         self.assertEqual(mail.outbox, [])
         self.assertFalse(WorkspaceSignupInvitation.objects.exists())
 
+        response = self.client.get(f'/work/{self.workspace.pk}/pages/resources/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Subscribe to use workplace resources')
+
     def test_invitation_signup_requires_the_invited_email_address(self):
         invitation = WorkspaceSignupInvitation.objects.create(
             workspace=self.workspace,
