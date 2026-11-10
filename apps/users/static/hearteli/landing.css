@@ -10,15 +10,15 @@
 .journey-card,.mini-dashboard{margin:6px}
 @media(max-width:760px){.journey-card,.mini-dashboard{margin:4px}}
 
-.login-menu{position:relative}
-.login-menu>summary{list-style:none;cursor:pointer}
+.login-menu{position:relative;isolation:isolate}
+.login-menu>summary{display:block;list-style:none;cursor:pointer}
 .login-menu>summary::-webkit-details-marker{display:none}
 .login-menu>summary.nav-login{font-size:13px;font-weight:800;text-decoration:none;transition:color .2s}
 .login-menu>summary:hover{color:var(--coral)}
-.login-options{display:none;position:absolute;z-index:20;top:100%;right:0;min-width:155px;padding:8px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 28px #1e22331a}
+.login-options{display:none;position:absolute;z-index:20;top:calc(100% + 6px);right:0;min-width:155px;padding:8px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 28px #1e22331a}
 .login-menu:hover .login-options,.login-menu:focus-within .login-options,.login-menu[open] .login-options{display:grid}
 .login-options a{display:block;padding:9px 11px;border-radius:8px;color:var(--ink);font-size:13px;font-weight:800;text-decoration:none}
 .login-options a:hover,.login-options a:focus-visible{background:var(--pink);color:var(--coral)}
 .site-footer .login-menu>summary{font-size:12px;font-weight:800}
 .footer-login .login-options{top:auto;bottom:100%}
-@media(max-width:760px){.nav-row .login-menu{width:100%}.nav-row .login-options{position:static;width:100%;margin-top:8px;box-shadow:none}}
+@media(max-width:760px){.nav-row .login-menu{width:100%;position:relative}.nav-row .login-options{position:absolute;top:calc(100% + 6px);right:0;width:100%;margin:0;box-shadow:0 12px 28px #1e22331a}}
