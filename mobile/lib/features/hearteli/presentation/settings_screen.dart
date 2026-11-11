@@ -81,7 +81,10 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => NotificationSettings(apiClient: apiClient),
+                    builder: (_) => NotificationSettings(
+                      apiClient: apiClient,
+                      sessionStore: sessionStore,
+                    ),
                   ),
                 ),
               ),
@@ -283,8 +286,13 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
 }
 
 class NotificationSettings extends StatefulWidget {
-  const NotificationSettings({super.key, required this.apiClient});
+  const NotificationSettings({
+    super.key,
+    required this.apiClient,
+    required this.sessionStore,
+  });
   final ApiClient apiClient;
+  final SessionStore sessionStore;
   @override
   State<NotificationSettings> createState() => _NotificationSettingsState();
 }
@@ -294,6 +302,8 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       nudge = true,
       rich = false,
       busy = false,
+      deviceNotifications = true,
+      deviceNotificationsBusy = false,
       emailNotifications = true,
       sponsorOptIn = false;
   String timezoneName = "UTC";
@@ -321,8 +331,14 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       final data = await widget.apiClient.get(
         '/api/tracking/hearteli/preferences/',
       );
+      final permissionGranted = await FirebaseService(
+        widget.apiClient,
+      ).notificationPermissionGranted();
       if (mounted)
         setState(() {
+          deviceNotifications =
+              widget.sessionStore.deviceNotificationsEnabled &&
+              permissionGranted;
           reminder = data['reminder_enabled'] == true;
           nudge = data['nudge_notifications'] != false;
           rich = data['rich_lock_preview'] == true;
@@ -337,6 +353,39 @@ class _NotificationSettingsState extends State<NotificationSettings> {
         });
     } catch (e) {
       if (mounted) setState(() => error = '$e');
+    }
+  }
+
+  Future<void> setDeviceNotifications(bool enabled) async {
+    setState(() => deviceNotificationsBusy = true);
+    try {
+      if (enabled) {
+        final registered = await FirebaseService(
+          widget.apiClient,
+        ).initialize();
+        if (!registered) {
+          final permissionGranted = await FirebaseService(
+            widget.apiClient,
+          ).notificationPermissionGranted();
+          if (mounted) {
+            showCalmMessage(
+              context,
+              permissionGranted
+                  ? 'Could not register this phone for notifications. Check your internet connection and try again.'
+                  : 'Notification permission was not granted. Allow Hearteli notifications in your phone settings, then turn this on again.',
+            );
+          }
+          return;
+        }
+      } else {
+        await FirebaseService(widget.apiClient).unregisterCurrentToken();
+      }
+      await widget.sessionStore.setDeviceNotificationsEnabled(enabled);
+      if (mounted) setState(() => deviceNotifications = enabled);
+    } catch (e) {
+      if (mounted) showCalmMessage(context, 'Could not update device notifications: $e');
+    } finally {
+      if (mounted) setState(() => deviceNotificationsBusy = false);
     }
   }
 
@@ -380,18 +429,15 @@ class _NotificationSettingsState extends State<NotificationSettings> {
               "Choose whether you'd like check-in reminders and updates from people you've connected with. You're always in control.",
         ),
         const SizedBox(height: 18),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.notifications_active_outlined),
-          label: const Text('Enable device notifications'),
-          onPressed: () async {
-            final enabled = await FirebaseService(widget.apiClient)
-                .initialize();
-            if (mounted)
-              showCalmMessage(
-                context,
-                enabled ? 'Device notifications enabled.' : 'Notifications could not be enabled. Check device permission and Firebase setup.',
-              );
-          },
+        SwitchListTile(
+          title: const Text('Device notifications'),
+          subtitle: const Text(
+            'Allow this phone to receive Hearteli push notifications.',
+          ),
+          value: deviceNotifications,
+          onChanged: deviceNotificationsBusy
+              ? null
+              : setDeviceNotifications,
         ),
         SwitchListTile(
           title: const Text('Optional sponsor acknowledgements'),

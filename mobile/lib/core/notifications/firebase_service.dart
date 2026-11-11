@@ -14,9 +14,11 @@ class FirebaseService {
   static StreamSubscription<RemoteMessage>? _messages;
   static void Function(int)? _onNudge;
   static void Function(String, String)? _onForegroundNotification;
+  static bool _deviceRegistrationEnabled = true;
 
   Future<bool> initialize({
     bool requestPermission = true,
+    bool registerDevice = true,
     void Function(int)? onNudge,
     void Function(String, String)? onForegroundNotification,
   }) async {
@@ -28,6 +30,7 @@ class FirebaseService {
       if (onForegroundNotification != null) {
         _onForegroundNotification = onForegroundNotification;
       }
+      _deviceRegistrationEnabled = registerDevice;
       final permission = requestPermission
           ? await FirebaseMessaging.instance.requestPermission(
               alert: true,
@@ -35,16 +38,21 @@ class FirebaseService {
               sound: true,
             )
           : await FirebaseMessaging.instance.getNotificationSettings();
-      if (permission.authorizationStatus != AuthorizationStatus.authorized &&
-          permission.authorizationStatus != AuthorizationStatus.provisional) {
-        return false;
+      final permissionGranted =
+          permission.authorizationStatus == AuthorizationStatus.authorized ||
+          permission.authorizationStatus == AuthorizationStatus.provisional;
+      if (registerDevice && permissionGranted) {
+        final token = await FirebaseMessaging.instance.getToken();
+        if (token != null && token.isNotEmpty) await registerToken(token);
+      } else {
+        await unregisterCurrentToken();
       }
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.isNotEmpty) await registerToken(token);
       await _tokens?.cancel();
       _tokens = FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
         try {
-          await registerToken(token);
+          if (_deviceRegistrationEnabled) {
+            await registerToken(token);
+          }
         } catch (error, stackTrace) {
           developer.log(
             'Unable to register refreshed Firebase token',
@@ -66,7 +74,7 @@ class FirebaseService {
       });
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) openMessage(initial);
-      return true;
+      return registerDevice && permissionGranted;
     } catch (error, stackTrace) {
       developer.log(
         'Firebase notification initialization failed',
@@ -108,5 +116,19 @@ class FirebaseService {
 
   Future<void> unregisterToken(String token) async {
     await _apiClient.delete('/api/users/device-token/', body: {'token': token});
+  }
+
+  Future<void> unregisterCurrentToken() async {
+    _deviceRegistrationEnabled = false;
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null && token.isNotEmpty) await unregisterToken(token);
+  }
+
+  Future<bool> notificationPermissionGranted() async {
+    if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+    final permission =
+        await FirebaseMessaging.instance.getNotificationSettings();
+    return permission.authorizationStatus == AuthorizationStatus.authorized ||
+        permission.authorizationStatus == AuthorizationStatus.provisional;
   }
 }
