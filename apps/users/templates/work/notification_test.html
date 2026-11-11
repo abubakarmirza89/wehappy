@@ -1,0 +1,26 @@
+{% extends "work/base.html" %}
+{% block title %}Notification delivery test | Hearteli{% endblock %}
+{% block content %}
+<section class="auth-layout">
+  <div>
+    <span class="eyebrow">Push notification setup</span>
+    <h1>Test a notification</h1>
+    <p>Send a test push notification to the devices registered to your signed-in account.</p>
+    <p>Sign in to Hearteli on your phone and allow notification permission before testing.</p>
+    <div class="quote">A successful response means Firebase accepted the message, not that the phone displayed it.</div>
+  </div>
+  <div class="card auth-card">
+    <h2>Send a test notification</h2>
+    {% for message in messages %}
+      <p class="{% if message.tags == 'error' %}error{% else %}pill{% endif %}" role="status">{{ message }}</p>
+    {% endfor %}
+    <form method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      <label for="{{ form.confirm.id_for_label }}">{{ form.confirm }} {{ form.confirm.label }}</label>
+      {% for error in form.confirm.errors %}<p class="error" role="alert">{{ error }}</p>{% endfor %}
+      <button class="full" type="submit">Send test notification</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

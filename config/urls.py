@@ -7,6 +7,7 @@ from apps.tracking import work_web, business_web
 from apps.users import marketplace_web
 from apps.users import billing, practice_web
 from apps.users import notification_web
+from apps.users.notification_test_web import notification_test
 from apps.users.email_test_web import email_test
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
@@ -48,6 +49,8 @@ urlpatterns = [
     path(settings.ADMIN_URL, admin.site.urls),
     path('test=email', email_test, name='email-test'),
     path('test=email/', email_test),
+    path('test=notification', notification_test, name='notification-test'),
+    path('test=notification/', notification_test),
 
 
     # DRF URL

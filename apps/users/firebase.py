@@ -23,13 +23,25 @@ def send_push_notification(tokens, title, body, data=None):
             token=token,
         ) for token in tokens]
         sent = 0
+        error_codes = []
         for message in messages:
             try:
                 messaging.send(message)
                 sent += 1
-            except Exception:
+            except Exception as exc:
                 logger.exception('FCM delivery failed for one device token')
-        return {'sent': sent, 'skipped': len(tokens) - sent, 'configured': True}
+                error_codes.append(type(exc).__name__)
+        return {
+            'sent': sent,
+            'skipped': len(tokens) - sent,
+            'configured': True,
+            'error_codes': error_codes,
+        }
     except ImportError:
         logger.warning('firebase-admin is not installed; push delivery skipped')
-        return {'sent': 0, 'skipped': len(tokens), 'configured': False}
+        return {
+            'sent': 0,
+            'skipped': len(tokens),
+            'configured': False,
+            'error_codes': ['FirebaseAdminUnavailable'],
+        }
