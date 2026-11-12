@@ -164,17 +164,31 @@ class UserAppointmentSerializer(serializers.ModelSerializer):
     therapist_id = serializers.IntegerField(read_only=True)
     review_submitted = serializers.SerializerMethodField()
     def get_review_submitted(self,obj): return Feedback.objects.filter(appointment=obj).exists()
+    display_time = serializers.SerializerMethodField()
+
+    def get_display_time(self, obj):
+        from .appointment_time import local_appointment
+        request = self.context.get('request')
+        return local_appointment(obj, request.user if request else None)
+
     url = serializers.HyperlinkedIdentityField(
         view_name="users:appointment-detail", lookup_field="pk")
     therapist = serializers.ReadOnlyField(source="therapist.name")
 
     class Meta:
         model = Appointment
-        fields = ["id", "duration_minutes", "therapist_id", "review_submitted", "url", "therapist", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        fields = ["id", "display_time", "duration_minutes", "therapist_id", "review_submitted", "url", "therapist", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
         read_only_fields = ["duration_minutes","fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
 
 
 class TherapistAppointmentSerializer(serializers.ModelSerializer):
+    display_time = serializers.SerializerMethodField()
+
+    def get_display_time(self, obj):
+        from .appointment_time import local_appointment
+        request = self.context.get('request')
+        return local_appointment(obj, request.user if request else None)
+
     url = serializers.HyperlinkedIdentityField(
         view_name="users:appointment-detail", lookup_field="pk")
     user = serializers.ReadOnlyField(source="user.name")
@@ -185,7 +199,7 @@ class TherapistAppointmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Appointment
-        fields = ["id", "url", "user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        fields = ["id", "display_time", "url", "user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
         read_only_fields = ["user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "created_at"]
 
 

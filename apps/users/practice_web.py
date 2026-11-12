@@ -113,7 +113,41 @@ def appointment(request,pk):
             text=request.POST.get('body','').strip()
             if 1<=len(text)<=2000: AppointmentMessage.objects.create(appointment=a,author=request.user,body=text)
         return redirect('practice-appointment',pk=pk)
-    return render(request,'practice/appointment.html',{'appointment':a,'chat_messages':a.messages.select_related('author'),'has_review':hasattr(a,'review')})
+    from .appointment_time import appointment_time_text
+    return render(request,'practice/appointment.html', {
+        'appointment': a,
+        'appointment_time': appointment_time_text(a, request.user),
+        'chat_messages': a.messages.select_related('author'),
+        'has_review': hasattr(a, 'review'),
+    })
+
+
+@login_required(login_url='/practice/login/')
+def appointment_calendar(request, pk):
+    from datetime import timedelta
+    from django.http import HttpResponse
+    from .appointment_time import appointment_start
+
+    appointment = get_object_or_404(
+        Appointment.objects.filter(Q(user=request.user) | Q(therapist=request.user)),
+        pk=pk,
+    )
+    start = appointment_start(appointment)
+    end = start + timedelta(minutes=appointment.duration_minutes)
+    stamp = lambda value: value.strftime('%Y%m%dT%H%M%SZ')
+    body = '\r\n'.join([
+        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Hearteli//Appointments//EN',
+        'BEGIN:VEVENT', f'UID:appointment-{appointment.pk}@hearteli.com',
+        f'DTSTAMP:{stamp(timezone.now())}', f'DTSTART:{stamp(start)}',
+        f'DTEND:{stamp(end)}', 'SUMMARY:Hearteli appointment',
+        'STATUS:CANCELLED' if appointment.status == 'CANCELED' else 'STATUS:CONFIRMED',
+        'END:VEVENT', 'END:VCALENDAR', '',
+    ])
+    response = HttpResponse(body, content_type='text/calendar; charset=utf-8')
+    response['Content-Disposition'] = 'attachment; filename="hearteli-appointment.ics"'
+    response['Cache-Control'] = 'private, no-store'
+    return response
+
 
 class BookingForm(forms.Form):
     date=forms.DateField(widget=forms.DateInput(attrs={'type':'date'}))

@@ -38,6 +38,23 @@ class MonetisationTests(TestCase):
         self.assertEqual(self.search(max_fee=50)['sponsored'],[])
         self.assertEqual(self.search(duration=60)['sponsored'],[])
         self.assertEqual(self.search(duration=45)['sponsored'][0]['id'],self.therapist.pk)
+    def test_directory_facets_remain_available_when_filters_match_nobody(self):
+        self.profile.specialties = 'Stress; Relationship support'
+        self.profile.save(update_fields=['specialties'])
+        initial = self.search(include_facets='true')
+        self.assertEqual(initial['count'], 1)
+        self.assertEqual(initial['specialties'], ['Relationship support', 'Stress'])
+        self.assertEqual(initial['durations'], [45])
+        self.assertIsNone(initial['next_after'])
+        later = self.search(include_facets='true', after=self.profile.pk)
+        self.assertEqual(later['organic'], [])
+        self.assertEqual(later['count'], 1)
+        none = self.search(include_facets='true', specialties='Stress', max_fee=50)
+        self.assertEqual(none['count'], 0)
+        self.assertEqual(none['specialties'], initial['specialties'])
+        self.assertEqual(self.search(include_facets='true', specialties='stress,Grief')['count'], 1)
+        self.assertEqual(self.search(include_facets='true', specialties='Stressful')['count'], 0)
+
     def test_fetch_is_not_impression_and_events_are_idempotent(self):
         c=self.campaign();data=self.search();ticket=data['sponsored'][0]['sponsor']['event_id']
         self.assertEqual(c.tickets.filter(shown_at__isnull=False).count(),0)

@@ -1,4 +1,5 @@
 from decimal import Decimal
+import re
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
@@ -30,7 +31,10 @@ def quote_booking(user,therapist,offering_id,referral_code=None):
     source='referral' if referred else 'platform';policy=MarketplacePolicy.current()
     rate=policy.referral_commission if referred else policy.platform_commission
     commission=(offering.fee*rate/Decimal(100)).quantize(Decimal('.01'))
-    return dict(booking_credential_verified=True,fee=offering.fee,duration_minutes=offering.duration_minutes,commission_percent=rate,
+    from .appointment_time import appointment_zone
+    provider_zone = appointment_zone(therapist)
+    return dict(provider_timezone=provider_zone.key if provider_zone else '',
+        booking_credential_verified=True,fee=offering.fee,duration_minutes=offering.duration_minutes,commission_percent=rate,
         acquisition_source=source,commission=commission,therapist_earnings=offering.fee-commission)
 
 class OfferingSerializer(serializers.ModelSerializer):
@@ -46,9 +50,11 @@ from rest_framework.response import Response
 class SearchFilters(serializers.Serializer):
     q=serializers.CharField(required=False,allow_blank=True,max_length=100)
     specialty=serializers.CharField(required=False,allow_blank=True,max_length=100)
+    specialties=serializers.CharField(required=False,max_length=1000)
     practitioner_type=serializers.CharField(required=False,allow_blank=True,max_length=100)
     max_fee=serializers.DecimalField(required=False,max_digits=10,decimal_places=2,min_value=0)
     duration=serializers.IntegerField(required=False,min_value=10,max_value=240)
+    after=serializers.IntegerField(required=False,min_value=1)
     modality=serializers.ChoiceField(required=False,choices=['Online','In person'])
 
 class MarketplaceSearchView(APIView):
@@ -58,22 +64,61 @@ class MarketplaceSearchView(APIView):
         profiles=filtered_profiles(filters.validated_data)
         from .serializers import TherapistPublicSerializer
         from .monetisation import active_campaigns,campaign_eligible,ticket_payload,adult
+        directory = request.query_params.get('include_facets') == 'true'
+        after = filters.validated_data.get('after') if directory else None
         sponsored=[];seen=set()
-        for campaign in (active_campaigns('search').filter(therapist__in=profiles) if adult(request.user) else []):
+        for campaign in (active_campaigns('search').filter(therapist__in=profiles) if not after and adult(request.user) else []):
             if len(sponsored)>=3:break
             if campaign.therapist_id in seen or not campaign_eligible(campaign):continue
             payload=ticket_payload(campaign,request.user)
             if payload:
                 data=TherapistPublicSerializer(campaign.therapist.user,context={'request':request}).data
                 data['sponsor']=payload;sponsored.append(data);seen.add(campaign.therapist_id)
-        organic=[TherapistPublicSerializer(p.user,context={'request':request}).data for p in profiles.exclude(pk__in=seen).order_by('user__name')[:50]]
-        return Response({'sponsored':sponsored,'organic':organic})
+        page = profiles.exclude(pk__in=seen)
+        if directory:
+            if after:
+                page = page.filter(pk__gt=after)
+            rows = list(page.order_by('pk')[:51])
+        else:
+            rows = list(page.order_by('user__name')[:50])
+        organic = [
+            TherapistPublicSerializer(p.user, context={'request': request}).data
+            for p in rows[:50]
+        ]
+        result = {'sponsored': sponsored, 'organic': organic}
+        if directory:
+            result['next_after'] = rows[49].pk if len(rows) > 50 else None
+            base = filtered_profiles({})
+            options = SessionOffering.objects.filter(
+                therapist__in=base, approved=True, active=True,
+            )
+            result.update(
+                count=profiles.count(),
+                specialties=sorted({
+                    token for value in base.values_list('specialties', flat=True)
+                    for token in specialty_tokens(value)
+                }, key=str.casefold),
+                durations=sorted(set(options.values_list('duration_minutes', flat=True))),
+            )
+        return Response(result)
+
+
+def specialty_tokens(value):
+    return {part.strip() for part in re.split(r'[,;|•]', value) if part.strip()}
 
 
 def filtered_profiles(filters):
     qs=eligible_profiles().select_related('user')
     if filters.get('q'):qs=qs.filter(user__name__icontains=filters['q'])
-    if filters.get('specialty'):qs=qs.filter(specialties__icontains=filters['specialty'])
+    if filters.get('specialties'):
+        selected = {token.casefold() for token in specialty_tokens(filters['specialties'])}
+        matches = [
+            pk for pk, value in qs.exclude(specialties='').values_list('pk', 'specialties')
+            if selected.intersection(token.casefold() for token in specialty_tokens(value))
+        ]
+        qs = qs.filter(pk__in=matches)
+    elif filters.get('specialty'):
+        qs = qs.filter(specialties__icontains=filters['specialty'])
     if filters.get('practitioner_type'):qs=qs.filter(practitioner_type__icontains=filters['practitioner_type'])
     if filters.get('modality'):qs=qs.filter(user__therapy_application__modalities__icontains=filters['modality'])
     offering_filters={'session_offerings__approved':True,'session_offerings__active':True}

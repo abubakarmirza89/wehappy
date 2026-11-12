@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/appointments/appointment_time.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
 import 'sponsor_placement.dart';
@@ -14,52 +15,188 @@ class TherapyScreen extends StatefulWidget {
 
 class _TherapyScreenState extends State<TherapyScreen> {
   List<dynamic> professionals = [];
-  bool loading = true;
-  String? error;
-  String query = '', specialty = '', maxFee = '', durationFilter = '';
+  List<String> specialties = [];
+  List<int> durations = [];
+  final query = TextEditingController();
+  final maxFee = TextEditingController();
+  Set<String> selectedSpecialties = {};
+  int? duration;
+  Map<String, dynamic> applied = {};
+  bool loading = true, loadingMore = false;
+  String? error, feeError, pageError;
+  int? nextAfter;
+  int resultCount = 0;
+
   @override
   void initState() {
     super.initState();
     load();
   }
 
+  @override
+  void dispose() {
+    query.dispose();
+    maxFee.dispose();
+    super.dispose();
+  }
+
   Future<void> load() async {
+    setState(() {
+      loading = true;
+      error = null;
+      pageError = null;
+      nextAfter = null;
+    });
     try {
       final data = await widget.apiClient.get(
         '/api/users/marketplace/search/',
-        query: {
-          'q': query,
-          if (specialty.isNotEmpty) 'specialty': specialty,
-          if (maxFee.isNotEmpty) 'max_fee': maxFee,
-          if (durationFilter.isNotEmpty) 'duration': durationFilter,
-        },
+        query: {'include_facets': 'true', ...applied},
       );
-      if (mounted)
-        setState(() {
-          professionals = [
-            ...items(data['sponsored']),
-            ...items(data['organic']),
-          ];
-          loading = false;
-          error = null;
-        });
-    } catch (e) {
-      if (mounted)
-        setState(() {
-          error = '$e';
-          loading = false;
-        });
+      if (!mounted) return;
+      setState(() {
+        professionals = [...items(data['sponsored']), ...items(data['organic'])];
+        resultCount = (data['count'] as int?) ?? professionals.length;
+        nextAfter = data['next_after'] as int?;
+        specialties = items(data['specialties']).whereType<String>().toList();
+        durations = items(data['durations']).whereType<int>().toList();
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        error = 'Could not load therapists. Please try again.';
+        loading = false;
+      });
     }
+  }
+
+  Future<void> loadMore() async {
+    final after = nextAfter;
+    if (after == null || loading || loadingMore) return;
+    setState(() {
+      loadingMore = true;
+      pageError = null;
+    });
+    try {
+      final data = await widget.apiClient.get(
+        '/api/users/marketplace/search/',
+        query: {'include_facets': 'true', ...applied, 'after': after},
+      );
+      if (!mounted) return;
+      setState(() {
+        final seen = professionals.map((p) => p['id']).toSet();
+        professionals.addAll(items(data['organic']).where((p) => seen.add(p['id'])));
+        nextAfter = data['next_after'] as int?;
+      });
+    } catch (_) {
+      if (mounted) setState(() => pageError = 'Could not load more therapists.');
+    } finally {
+      if (mounted) setState(() => loadingMore = false);
+    }
+  }
+
+  void apply() {
+    FocusScope.of(context).unfocus();
+    final fee = maxFee.text.trim();
+    final name = query.text.trim();
+    if (fee.isNotEmpty && !RegExp(r'^\d{1,8}(\.\d{1,2})?$').hasMatch(fee)) {
+      setState(() => feeError = 'Enter a non-negative fee with up to two decimals.');
+      return;
+    }
+    feeError = null;
+    applied = {
+      if (name.isNotEmpty) 'q': name,
+      if (selectedSpecialties.isNotEmpty)
+        'specialties': selectedSpecialties.join(','),
+      if (fee.isNotEmpty) 'max_fee': fee,
+      if (duration != null) 'duration': duration,
+    };
+    load();
+  }
+
+  void clear() {
+    query.clear();
+    maxFee.clear();
+    selectedSpecialties = {};
+    duration = null;
+    apply();
+  }
+
+  void removeFilter(String key, [String? specialty]) {
+    final next = Map<String, dynamic>.from(applied);
+    if (specialty != null) {
+      final values = (next[key] as String).split(',')..remove(specialty);
+      selectedSpecialties.remove(specialty);
+      if (values.isEmpty) {
+        next.remove(key);
+      } else {
+        next[key] = values.join(',');
+      }
+    } else {
+      next.remove(key);
+      if (key == 'q') query.clear();
+      if (key == 'max_fee') {
+        maxFee.clear();
+        feeError = null;
+      }
+      if (key == 'duration') duration = null;
+    }
+    applied = next;
+    load();
+  }
+
+  Future<void> chooseSpecialties() async {
+    final pending = {...selectedSpecialties};
+    var search = '';
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialog) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          scrollable: true,
+          title: const Text('Specialties'),
+          content: SizedBox(
+            width: 360,
+            height: 300,
+            child: Column(
+              children: [
+                TextField(
+                  decoration: const InputDecoration(labelText: 'Search specialties'),
+                  onChanged: (value) => update(() => search = value.toLowerCase()),
+                ),
+                Expanded(
+                  child: ListView(
+                    children: [
+                      for (final item in specialties)
+                        if (item.toLowerCase().contains(search))
+                          CheckboxListTile(
+                            title: Text(item),
+                            value: pending.contains(item),
+                            onChanged: (checked) => update(() {
+                              if (checked == true) {
+                                pending.add(item);
+                              } else {
+                                pending.remove(item);
+                              }
+                            }),
+                          ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialog, pending), child: const Text('Done')),
+          ],
+        ),
+      ),
+    );
+    if (mounted && result != null) setState(() => selectedSpecialties = result);
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered =
-        professionals
-            .where(
-              (p) => '${p['name']}'.toLowerCase().contains(query.toLowerCase()),
-            )
-            .toList();
     return Scaffold(
       appBar: AppBar(title: const Text('Professional support')),
       body: ListView(
@@ -71,42 +208,92 @@ class _TherapyScreenState extends State<TherapyScreen> {
           ),
           const SizedBox(height: 18),
           TextField(
-            onChanged: (v) => setState(() => query = v),
+            controller: query,
+            maxLength: 100,
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search),
               labelText: 'Search by name',
+              counterText: '',
             ),
+            onSubmitted: (_) { if (!loading && !loadingMore) apply(); },
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: loading || specialties.isEmpty ? null : chooseSpecialties,
+            child: Text(selectedSpecialties.isEmpty
+                ? 'Any specialty'
+                : '${selectedSpecialties.length} specialties selected'),
           ),
           const SizedBox(height: 12),
           TextField(
-            decoration: const InputDecoration(labelText: 'Specialty'),
-            onChanged: (v) => specialty = v,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            decoration: const InputDecoration(labelText: 'Maximum fee (USD)'),
-            keyboardType: TextInputType.number,
-            onChanged: (v) => maxFee = v,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            decoration: const InputDecoration(
-              labelText: 'Session duration (minutes)',
+            controller: maxFee,
+            decoration: InputDecoration(
+              labelText: 'Maximum fee (USD)',
+              hintText: 'Any price',
+              errorText: feeError,
             ),
-            keyboardType: TextInputType.number,
-            onChanged: (v) => durationFilter = v,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
           const SizedBox(height: 12),
-          OutlinedButton(onPressed: load, child: const Text('Apply filters')),
+          DropdownButton<int>(
+            value: duration,
+            hint: const Text('Any session duration'),
+            isExpanded: true,
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Any session duration')),
+              for (final value in {...durations, if (duration != null) duration!})
+                DropdownMenuItem(value: value, child: Text('$value minutes')),
+            ],
+            onChanged: loading ? null : (value) => setState(() => duration = value),
+          ),
+          Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton(onPressed: loading || loadingMore ? null : apply, child: const Text('Apply filters')),
+              TextButton(onPressed: loading || loadingMore ? null : clear, child: const Text('Clear all')),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final entry in applied.entries)
+                if (entry.key == 'specialties')
+                  for (final value in (entry.value as String).split(','))
+                    InputChip(label: Text(value), onDeleted: loading || loadingMore ? null : () => removeFilter(entry.key, value))
+                else
+                  InputChip(
+                    label: Text(switch (entry.key) {
+                      'max_fee' => 'Up to USD ${entry.value}',
+                      'duration' => '${entry.value} minutes',
+                      _ => '${entry.value}',
+                    }),
+                    onDeleted: loading || loadingMore ? null : () => removeFilter(entry.key),
+                  ),
+            ],
+          ),
           const SizedBox(height: 16),
           if (loading)
-            const Center(child: CircularProgressIndicator())
+            const Center(child: CircularProgressIndicator(semanticsLabel: 'Loading therapists'))
           else if (error != null)
-            StatusPanel(message: error!, action: 'Retry', onAction: load)
-          else if (filtered.isEmpty)
-            const StatusPanel(message: 'No professionals match right now.')
-          else
-            for (final raw in filtered)
+            Semantics(liveRegion: true, child: StatusPanel(message: error!, action: 'Retry', onAction: load))
+          else if (professionals.isEmpty)
+            Semantics(
+              liveRegion: true,
+              child: StatusPanel(
+                message: applied.isEmpty
+                    ? 'No eligible therapists are available in the directory right now.'
+                    : 'No therapists match your filters.',
+                action: applied.isEmpty ? null : 'View all therapists',
+                onAction: applied.isEmpty ? null : clear,
+              ),
+            )
+          else ...[
+            Semantics(liveRegion: true, child: Text(
+              resultCount == professionals.length
+                  ? '$resultCount therapists found'
+                  : 'Showing ${professionals.length} of $resultCount therapists',
+            )),
+            for (final raw in professionals)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: HearteliCard(
@@ -169,6 +356,14 @@ class _TherapyScreenState extends State<TherapyScreen> {
                           ),
                 ),
               ),
+            if (nextAfter != null)
+              OutlinedButton(
+                onPressed: loadingMore ? null : loadMore,
+                child: Text(loadingMore ? 'Loading…' : 'Load more therapists'),
+              ),
+            if (pageError != null)
+              Semantics(liveRegion: true, child: Text(pageError!)),
+          ],
           const SizedBox(height: 12),
           const Text(
             'Hearteli is not emergency care. For urgent safety concerns, use Immediate support.',
@@ -314,6 +509,8 @@ class BookTherapist extends StatefulWidget {
 }
 
 class _BookTherapistState extends State<BookTherapist> {
+  AppointmentClock? clock;
+  bool loadingClock = true;
   DateTime? date;
   TimeOfDay? time;
   String format = 'Online';
@@ -331,6 +528,7 @@ class _BookTherapistState extends State<BookTherapist> {
   @override
   void initState() {
     super.initState();
+    loadClock();
     final sponsor = widget.therapist['sponsor'];
     if (sponsor != null)
       widget.apiClient
@@ -344,6 +542,18 @@ class _BookTherapistState extends State<BookTherapist> {
           .catchError((_) => <String, dynamic>{});
   }
 
+  Future<void> loadClock() async {
+    setState(() => loadingClock = true);
+    try {
+      final value = await AppointmentClock.load(widget.apiClient);
+      if (mounted) setState(() => clock = value);
+    } catch (_) {
+      if (mounted) setState(() => clock = null);
+    } finally {
+      if (mounted) setState(() => loadingClock = false);
+    }
+  }
+
   @override
   void dispose() {
     reason.dispose();
@@ -353,21 +563,20 @@ class _BookTherapistState extends State<BookTherapist> {
 
   Future<void> submit() async {
     if (date == null || time == null || selectedOffering == null) return;
-    final utcStart =
-        DateTime(
-          date!.year,
-          date!.month,
-          date!.day,
-          time!.hour,
-          time!.minute,
-        ).toUtc();
+    final selectedClock = clock;
+    if (selectedClock == null) return;
+    final local = selectedClock.resolve(date!, time!);
+    if (local == null) {
+      showCalmMessage(context, 'That time does not exist in your timezone. Choose another time.');
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
           (dialog) => AlertDialog(
             title: const Text('Review session request'),
             content: Text(
-              '${widget.therapist['name']}\n${date!.toIso8601String().substring(0, 10)} · ${time!.format(context)} (${DateTime.now().timeZoneName})\n$format\nFee: USD ${selectedOffering?['fee']} · ${selectedOffering?['duration_minutes']} minutes\n\nThis request does not share your private check-ins.',
+              '${widget.therapist['name']}\n${selectedClock.describe(local)}\n$format\nFee: USD ${selectedOffering?['fee']} · ${selectedOffering?['duration_minutes']} minutes\n\nThis request does not share your private check-ins.',
             ),
             actions: [
               TextButton(
@@ -381,15 +590,13 @@ class _BookTherapistState extends State<BookTherapist> {
             ],
           ),
     );
-    if (confirmed != true) return;
+    if (!mounted || confirmed != true) return;
     setState(() => busy = true);
     try {
       await widget.apiClient.post(
         '/api/users/create-appointment/${widget.therapist['id']}/',
         body: {
-          'date': utcStart.toIso8601String().substring(0, 10),
-          'time':
-              '${utcStart.hour.toString().padLeft(2, '0')}:${utcStart.minute.toString().padLeft(2, '0')}',
+          ...appointmentUtcPayload(local),
           'offering_id': offeringId,
           if (referral.text.trim().isNotEmpty)
             'referral_code': referral.text.trim(),
@@ -422,6 +629,12 @@ class _BookTherapistState extends State<BookTherapist> {
     body: ListView(
       padding: screenPadding,
       children: [
+        if (loadingClock)
+          const LinearProgressIndicator()
+        else if (clock == null)
+          StatusPanel(message: 'Could not load your appointment timezone.', action: 'Retry', onAction: loadClock)
+        else
+          Text('Appointment timezone: ${clock!.label}'),
         PageIntro(
           title: 'Book ${widget.therapist['name']}',
           subtitle: 'Choose a time and review details before submitting.',
@@ -449,9 +662,9 @@ class _BookTherapistState extends State<BookTherapist> {
           onPressed: () async {
             final result = await showDatePicker(
               context: context,
-              initialDate: DateTime.now().add(const Duration(days: 1)),
-              firstDate: DateTime.now(),
-              lastDate: DateTime.now().add(const Duration(days: 180)),
+              initialDate: (clock?.today ?? DateTime.now()).add(const Duration(days: 1)),
+              firstDate: clock?.today ?? DateTime.now(),
+              lastDate: (clock?.today ?? DateTime.now()).add(const Duration(days: 180)),
             );
             if (result != null) setState(() => date = result);
           },
@@ -473,7 +686,7 @@ class _BookTherapistState extends State<BookTherapist> {
           child: Text(
             time == null
                 ? 'Select time'
-                : '${time!.format(context)} · ${DateTime.now().timeZoneName}',
+                : '${time!.format(context)} · ${clock?.label ?? 'Timezone unavailable'}',
           ),
         ),
         const SizedBox(height: 12),
@@ -509,7 +722,9 @@ class _BookTherapistState extends State<BookTherapist> {
         ),
         const SizedBox(height: 20),
         FilledButton(
-          onPressed: date == null || time == null || busy ? null : submit,
+          onPressed: date == null || time == null || busy || loadingClock || clock == null
+              ? null
+              : submit,
           child: Text(busy ? 'Submitting…' : 'Review booking'),
         ),
       ],

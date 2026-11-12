@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../therapist/presentation/practice_shell.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/appointments/appointment_time.dart';
 import '../../hearteli/presentation/components.dart';
 import '../../hearteli/presentation/therapy_screen.dart';
 
@@ -44,12 +45,22 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
 
   Future<void> change(Map item, bool cancel) async {
     Map<String, dynamic> payload = {};
+    String? reviewTime;
     if (!cancel) {
+      AppointmentClock clock;
+      try {
+        clock = await AppointmentClock.load(widget.apiClient);
+      } catch (_) {
+        if (mounted) showCalmMessage(context, 'Could not load your appointment timezone. Try again.');
+        return;
+      }
+      if (!mounted) return;
+      final today = clock.today;
       final date = await showDatePicker(
         context: context,
-        initialDate: DateTime.now().add(const Duration(days: 1)),
-        firstDate: DateTime.now(),
-        lastDate: DateTime.now().add(const Duration(days: 365)),
+        initialDate: today.add(const Duration(days: 1)),
+        firstDate: today,
+        lastDate: today.add(const Duration(days: 365)),
       );
       if (date == null || !mounted) return;
       final time = await showTimePicker(
@@ -57,11 +68,13 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
         initialTime: const TimeOfDay(hour: 10, minute: 0),
       );
       if (time == null || !mounted) return;
-      payload = {
-        'date': date.toIso8601String().substring(0, 10),
-        'time':
-            '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-      };
+      final local = clock.resolve(date, time);
+      if (local == null) {
+        showCalmMessage(context, 'That time does not exist in your timezone. Choose another time.');
+        return;
+      }
+      reviewTime = clock.describe(local);
+      payload = appointmentUtcPayload(local);
     }
     if (!mounted) return;
     final yes = await showDialog<bool>(
@@ -71,7 +84,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
         content: Text(
           cancel
               ? 'Your booking history will remain available. Any payment refund follows your provider’s policy.'
-              : '${payload['date']} at ${payload['time']} UTC. Confirm the timezone with your provider.',
+              : reviewTime!,
         ),
         actions: [
           TextButton(
@@ -184,7 +197,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
         children: [
           const PageIntro(
             title: 'Professional support',
-            subtitle: 'Appointment times below use UTC. Confirm any provider-specific timezone before attending.',
+            subtitle: 'Times use your Hearteli timezone, or your device timezone when none is selected.',
           ),
           const SizedBox(height: 20),
           if (loading)
@@ -218,7 +231,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      Text('${raw['date']} · ${raw['time']} UTC'),
+                      Text(appointmentDisplayTime(raw as Map)),
                       Text('${raw['location']} · ${raw['status']}'),
                       if (raw.containsKey('therapist_id') &&
                           raw['status'] == 'COMPLETED')

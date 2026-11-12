@@ -310,6 +310,7 @@ class _NotificationSettingsState extends State<NotificationSettings>
       emailNotifications = true,
       sponsorOptIn = false;
   String timezoneName = "UTC";
+  bool timezoneEdited = false;
   TimeOfDay reminderTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay? start, end;
   String? error;
@@ -449,7 +450,7 @@ class _NotificationSettingsState extends State<NotificationSettings>
           'reminder_enabled': reminder,
           'email_notifications': emailNotifications,
           'sponsor_opt_in': sponsorOptIn,
-          'timezone_name': timezoneName,
+          if (timezoneEdited) 'timezone_name': timezoneName,
           'reminder_time': format(reminderTime),
           'nudge_notifications': nudge,
           'rich_lock_preview': rich,
@@ -538,11 +539,17 @@ class _NotificationSettingsState extends State<NotificationSettings>
             timezoneName,
             'UTC',
             'Asia/Karachi',
+            'Australia/Sydney',
             'Europe/London',
             'America/New_York',
             'Asia/Dubai',
           }.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-          onChanged: (v) => setState(() => timezoneName = v ?? timezoneName),
+          onChanged: (v) => setState(() {
+            if (v != null) {
+              timezoneName = v;
+              timezoneEdited = true;
+            }
+          }),
         ),
         OutlinedButton(
           onPressed: () async {

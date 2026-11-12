@@ -162,8 +162,13 @@ def appointment_events(sender, instance, created, raw=False, **kwargs):
     old = getattr(instance, '_old_schedule', None)
     schedule = {'date': instance.date, 'time': instance.time, 'status': instance.status}
     if created or (old and old != schedule):
-        text = f'Your appointment was {"requested" if created else "updated"}. Open Hearteli to review the date, time and status. Appointment times use UTC unless the provider confirms another timezone.'
+        from .appointment_time import appointment_time_text
         for user in (instance.user, instance.therapist):
+            text = (
+                f'Your appointment was {"requested" if created else "updated"}. '
+                f'Scheduled time: {appointment_time_text(instance, user)}. '
+                'Open Hearteli to review its status.'
+            )
             queue_email(user, 'appointment', 'Your Hearteli appointment update', text,
                 key=f'appointment:{instance.pk}:{user.pk}:{instance.date}:{instance.time}:{instance.status}', path='/notifications/', target_id=instance.pk)
 

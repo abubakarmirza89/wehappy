@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
+from .appointment_time import appointment_start, appointment_time_text
 from zoneinfo import ZoneInfo
 from django.utils import timezone
 from apps.tracking.models import HearteliPreferences, MoodCheckIn, EmpathyNudge, SupportOutcome
@@ -43,11 +44,11 @@ def queue_due_reminders(at=None):
     at = at or timezone.now()
     # Existing appointment contract uses UTC; never infer a provider's timezone.
     for appointment in Appointment.objects.filter(status='BOOKED', date__range=[at.date(), (at + timedelta(days=1)).date()]).select_related('user', 'therapist'):
-        start = datetime.combine(appointment.date, appointment.time, tzinfo=ZoneInfo('UTC'))
+        start = appointment_start(appointment)
         if timedelta(0) < start - at <= timedelta(hours=24):
             for user in (appointment.user, appointment.therapist):
                 queue_email(user, 'appointment_reminder', 'Your upcoming Hearteli appointment',
-                    f'An appointment is scheduled for {appointment.date} at {appointment.time} UTC. Open Hearteli to review or contact your provider.',
+                    f'An appointment is scheduled for {appointment_time_text(appointment, user)}. Open Hearteli to review or contact your provider.',
                     key=f'appointment-reminder:{appointment.pk}:{user.pk}:{start.isoformat()}', path='/notifications/', target_id=appointment.pk)
 
     for nudge in EmpathyNudge.objects.filter(status='acknowledged', responded_at__lte=at-timedelta(hours=24)).select_related('sender'):

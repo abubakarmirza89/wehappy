@@ -453,7 +453,8 @@ class PreferencesSerializer(serializers.ModelSerializer):
     class Meta:
         model = HearteliPreferences
         fields = ['use_contexts', 'reminder_enabled', 'nudge_notifications', 'quiet_start',
-                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'reminder_time', 'sponsor_opt_in']
+                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'timezone_selected', 'reminder_time', 'sponsor_opt_in']
+        read_only_fields = ['timezone_selected']
 
     def validate_timezone_name(self, value):
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -483,7 +484,7 @@ class PreferencesViewSet(viewsets.ViewSet):
         obj, _ = HearteliPreferences.objects.get_or_create(user=request.user)
         serializer = PreferencesSerializer(obj, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        serializer.save(**({"timezone_selected": True} if "timezone_name" in serializer.validated_data else {}))
         return Response(serializer.data)
 
 class TherapyGrantSerializer(serializers.ModelSerializer):

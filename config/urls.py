@@ -40,6 +40,7 @@ urlpatterns = [
     path('practice/apply/',practice_web.apply,name='practice-apply'),
     path('practice/profile/',practice_web.profile,name='practice-profile'),
     path('practice/withdraw/',practice_web.withdraw,name='practice-withdraw'),
+    path('practice/appointments/<int:pk>/calendar/',practice_web.appointment_calendar,name='practice-appointment-calendar'),
     path('practice/appointments/<int:pk>/',practice_web.appointment,name='practice-appointment'),
     path('work/<int:pk>/billing/',billing.billing_page,name='business-billing'),
     path('work/<int:pk>/billing/checkout/',billing.checkout,name='business-checkout'),

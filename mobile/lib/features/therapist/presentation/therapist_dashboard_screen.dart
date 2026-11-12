@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/appointments/appointment_time.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/utils/toast.dart';
@@ -167,7 +169,7 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
                   ),
                   title: Text('${item['user'] ?? 'Client'}'),
                   subtitle: Text(
-                    '${item['date'] ?? ''} ${item['time'] ?? ''}\n${item['reason'] ?? ''}',
+                    '${appointmentDisplayTime(item as Map)}\n${item['reason'] ?? ''}',
                   ),
                   trailing: Text('${item['status'] ?? ''}'),
                 ),

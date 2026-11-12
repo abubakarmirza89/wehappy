@@ -97,6 +97,7 @@ def create_therapist_profile(sender, instance, created, **kwargs):
 
 
 class Appointment(models.Model):
+    provider_timezone = models.CharField(max_length=64, blank=True, default='')
     booking_credential_verified=models.BooleanField(default=False)
     duration_minutes=models.PositiveIntegerField(default=60)
     acquisition_source=models.CharField(max_length=10,default='platform',choices=[('platform','Platform acquired'),('referral','Therapist referred')])

@@ -443,6 +443,7 @@ class HearteliPreferences(models.Model):
     email_notifications = models.BooleanField(default=True)
     sponsor_opt_in = models.BooleanField(default=False)
     timezone_name = models.CharField(max_length=64, default="UTC")
+    timezone_selected = models.BooleanField(default=False)
     reminder_time = models.TimeField(default="09:00")
 
 
