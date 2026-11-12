@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
-import 'circle_screen.dart';
+import 'nudge_compose_screen.dart';
 import 'components.dart';
 
 class SafetyScreen extends StatefulWidget {
@@ -132,9 +132,10 @@ class _SafetyScreenState extends State<SafetyScreen> {
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => CircleScreen(
+              builder: (_) => NudgeComposeScreen(
                 apiClient: widget.apiClient,
                 sessionStore: widget.sessionStore,
+                fromImmediateSupport: true,
               ),
             ),
           ),

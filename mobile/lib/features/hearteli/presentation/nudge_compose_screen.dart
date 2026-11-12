@@ -12,10 +12,12 @@ class NudgeComposeScreen extends StatefulWidget {
     super.key,
     required this.apiClient,
     required this.sessionStore,
+    this.fromImmediateSupport = false,
   });
 
   final ApiClient apiClient;
   final SessionStore sessionStore;
+  final bool fromImmediateSupport;
 
   @override
   State<NudgeComposeScreen> createState() => _NudgeComposeScreenState();
@@ -73,7 +75,9 @@ class _NudgeComposeScreenState extends State<NudgeComposeScreen> {
       context,
       MaterialPageRoute(
         builder: (confirmationContext) => Scaffold(
-          appBar: AppBar(title: const Text('Empathy Nudge')),
+          appBar: AppBar(
+      title: Text(widget.fromImmediateSupport ? 'Your Circle' : 'Empathy Nudge'),
+    ),
           body: SafeArea(
             child: ListView(
               padding: screenPadding,
@@ -93,6 +97,7 @@ class _NudgeComposeScreenState extends State<NudgeComposeScreen> {
                           apiClient: widget.apiClient,
                           recipientId: recipientId,
                           name: name,
+                          fromImmediateSupport: widget.fromImmediateSupport,
                         ),
                       ),
                     );
@@ -127,10 +132,18 @@ class _NudgeComposeScreenState extends State<NudgeComposeScreen> {
       child: ListView(
         padding: screenPadding,
         children: [
-          const PageIntro(
-            title: 'Who would you like to nudge?',
+          PageIntro(
+            title: widget.fromImmediateSupport
+                ? 'Contact someone in your Circle'
+                : 'Who would you like to nudge?',
             subtitle: 'Choose someone in your Circle who accepts nudges.',
           ),
+          if (widget.fromImmediateSupport) ...[
+            const SizedBox(height: 14),
+            const StatusPanel(
+              message: 'A Nudge may not be seen right away. If you need help now, call someone you trust directly or go back to Immediate Support for local options.',
+            ),
+          ],
           const SizedBox(height: 20),
           if (loading)
             const Center(
@@ -151,9 +164,15 @@ class _NudgeComposeScreenState extends State<NudgeComposeScreen> {
             Semantics(
               liveRegion: true,
               child: StatusPanel(
-                message: 'No Circle members can receive nudges yet.',
-                action: 'Invite someone',
-                onAction: invite,
+                message: widget.fromImmediateSupport
+                    ? 'No trusted Circle contact can receive a Nudge right now.'
+                    : 'No Circle members can receive nudges yet.',
+                action: widget.fromImmediateSupport
+                    ? 'Back to Immediate Support'
+                    : 'Invite someone',
+                onAction: widget.fromImmediateSupport
+                    ? () => Navigator.pop(context)
+                    : invite,
               ),
             )
           else
@@ -178,11 +197,13 @@ class _NudgePreview extends StatefulWidget {
     required this.apiClient,
     required this.recipientId,
     required this.name,
+    required this.fromImmediateSupport,
   });
 
   final ApiClient apiClient;
   final int recipientId;
   final String name;
+  final bool fromImmediateSupport;
 
   @override
   State<_NudgePreview> createState() => _NudgePreviewState();
@@ -219,6 +240,7 @@ class _NudgePreviewState extends State<_NudgePreview> {
           'recipient': widget.recipientId,
           'message': content,
           'idempotency_key': retryKey,
+          if (widget.fromImmediateSupport) 'support_context': 'safety',
         },
       );
       if (!mounted) return;
