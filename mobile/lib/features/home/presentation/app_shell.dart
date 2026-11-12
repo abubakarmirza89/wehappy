@@ -340,8 +340,8 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               _QuickAction(
-                icon: Icons.chat_bubble_outline,
-                label: 'Message',
+                icon: Icons.inbox_outlined,
+                label: 'Updates',
                 onTap:
                     () => Navigator.push(
                       context,
