@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 import '../../therapist/presentation/practice_shell.dart';
 
@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../../core/notifications/firebase_service.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
@@ -175,7 +176,7 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
           error = null;
         });
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
@@ -399,7 +400,7 @@ class _NotificationSettingsState extends State<NotificationSettings>
           end = parse(data['quiet_end']);
         });
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
@@ -442,7 +443,12 @@ class _NotificationSettingsState extends State<NotificationSettings>
   }
 
   Future<void> save() async {
-    setState(() => busy = true);
+    if (busy) return;
+    if ((start == null) != (end == null) || (start != null && start == end)) {
+      setState(() => error = 'Choose different start and end times, or clear both quiet hours.');
+      return;
+    }
+    setState(() { busy = true; error = null; });
     try {
       await widget.apiClient.patch(
         '/api/tracking/hearteli/preferences/update_mine/',
@@ -464,7 +470,7 @@ class _NotificationSettingsState extends State<NotificationSettings>
           'Preferences saved. Email delivery follows your quiet hours. Push delivery also requires device permission and server setup.',
         );
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -647,20 +653,47 @@ class DataSettings extends StatefulWidget {
 class _DataSettingsState extends State<DataSettings> {
   bool busy = false;
   String? error;
+  String? exportStatus;
+  static const _exportChannel = MethodChannel('hearteli/data_export');
+
   Future<void> export() async {
-    setState(() => busy = true);
+    if (busy) return;
+    setState(() {
+      busy = true;
+      exportStatus = null;
+    });
     try {
-      final data = await widget.apiClient.get('/api/tracking/hearteli/data/');
-      await Clipboard.setData(
-        ClipboardData(text: const JsonEncoder.withIndent('  ').convert(data)),
+      final password = await showDialog<String>(
+        context: context,
+        builder: (_) => const _ExportPasswordDialog(),
       );
-      if (mounted)
-        showCalmMessage(
-          context,
-          'Your data was copied as JSON. Paste it into a document you control.',
-        );
-    } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (password == null || !mounted) return;
+      setState(() => exportStatus = 'Preparing your private archive…');
+      final bytes = await widget.apiClient.downloadPersonalData(password);
+      if (!mounted) return;
+      final date = DateTime.now().toIso8601String().substring(0, 10);
+      setState(() => exportStatus = 'Choose where to save your archive.');
+      final saved = await _exportChannel.invokeMethod<bool>('save', {
+        'filename': 'hearteli-data-export-$date.zip',
+        'bytes': bytes,
+      });
+      if (mounted) {
+        setState(() => exportStatus = saved == true
+            ? 'Your data archive was saved.'
+            : 'Save cancelled. No archive was saved.');
+      }
+    } on ApiException catch (e) {
+      if (mounted) setState(() => exportStatus = switch (e.statusCode) {
+        401 => 'Sign in again before exporting your data.',
+        403 => 'Your current password did not match. Try again.',
+        413 => 'This archive is too large for an in-app download. Contact Hearteli support.',
+        429 => 'Too many attempts. Wait a few minutes and try again.',
+        _ => 'Could not prepare your archive. Check your connection and try again.',
+      });
+    } on PlatformException {
+      if (mounted) setState(() => exportStatus = 'Could not save your archive. Choose a writable location and try again.');
+    } catch (_) {
+      if (mounted) setState(() => exportStatus = 'Could not download your archive. Check your connection and try again.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -723,7 +756,7 @@ class _DataSettingsState extends State<DataSettings> {
           (_) => false,
         );
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       password.dispose();
       if (mounted) setState(() => busy = false);
@@ -746,9 +779,14 @@ class _DataSettingsState extends State<DataSettings> {
         ),
         const SizedBox(height: 18),
         FilledButton(
-          onPressed: busy ? null : export,
-          child: const Text('Copy my data as JSON'),
+          onPressed: busy || kIsWeb || defaultTargetPlatform != TargetPlatform.android
+              ? null : export,
+          child: const Text('Download my data (.zip)'),
         ),
+        if (kIsWeb || defaultTargetPlatform != TargetPlatform.android)
+          const Text('Private archive downloads are available in the Android app.'),
+        if (exportStatus != null)
+          Semantics(liveRegion: true, child: StatusPanel(message: exportStatus!)),
         const SizedBox(height: 25),
         const Text(
           'Delete account',
@@ -769,5 +807,57 @@ class _DataSettingsState extends State<DataSettings> {
         ],
       ],
     ),
+  );
+}
+
+
+class _ExportPasswordDialog extends StatefulWidget {
+  const _ExportPasswordDialog();
+
+  @override
+  State<_ExportPasswordDialog> createState() => _ExportPasswordDialogState();
+}
+
+class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
+  final password = TextEditingController();
+  final form = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text('Confirm your identity'),
+    content: Form(
+      key: form,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('The ZIP contains private Hearteli data and is not encrypted. Save it somewhere only you can access.'),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: password,
+            obscureText: true,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Current password'),
+            validator: (value) => value == null || value.isEmpty
+                ? 'Enter your current password.' : null,
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      FilledButton(
+        onPressed: () {
+          if (form.currentState!.validate()) Navigator.pop(context, password.text);
+        },
+        child: const Text('Prepare ZIP'),
+      ),
+    ],
   );
 }

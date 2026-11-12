@@ -1,10 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../../core/appointments/appointment_time.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
 import 'sponsor_placement.dart';
+
+String _fee(BuildContext context, Object? amount, Object? currency) {
+  if (currency is! String || currency.isEmpty) return 'Fee unavailable';
+  final number = num.tryParse('$amount');
+  if (number == null) return 'Fee unavailable';
+  final formatted = NumberFormat.simpleCurrency(
+    locale: WidgetsBinding.instance.platformDispatcher.locale.toString(),
+    name: currency,
+  ).format(number);
+  return '$formatted $currency';
+}
+
+String _offeringFee(BuildContext context, Map option) {
+  final source = _fee(context, option['fee'], option['billing_currency']);
+  final estimate = option['estimate'];
+  if (estimate is! Map) return source;
+  return '$source · approximately ${_fee(context, estimate['amount'], estimate['quote'])} (reference rate: ${estimate['date']})';
+}
 
 class TherapyScreen extends StatefulWidget {
   const TherapyScreen({super.key, required this.apiClient});
@@ -25,7 +45,24 @@ class _TherapyScreenState extends State<TherapyScreen> {
   bool loading = true, loadingMore = false;
   String? error, feeError, pageError;
   int? nextAfter;
-  int resultCount = 0;
+  int resultCount = 0, marketCount = 0;
+  String market = '', feeCurrency = '';
+  String? currencyOverride;
+  List<dynamic> markets = [];
+  List<String> currencies = [];
+  bool missingRates = false;
+  String? get localeCurrency => const {
+    'AU': 'AUD', 'US': 'USD', 'GB': 'GBP', 'CA': 'CAD',
+    'NZ': 'NZD', 'PK': 'PKR',
+  }[WidgetsBinding.instance.platformDispatcher.locale.countryCode];
+
+  Map<String, dynamic> get directoryQuery => {
+    'include_facets': 'true',
+    if (localeCurrency != null) 'locale_currency': localeCurrency,
+    if (currencyOverride != null) 'fee_currency': currencyOverride,
+    ...applied,
+  };
+
 
   @override
   void initState() {
@@ -50,13 +87,19 @@ class _TherapyScreenState extends State<TherapyScreen> {
     try {
       final data = await widget.apiClient.get(
         '/api/users/marketplace/search/',
-        query: {'include_facets': 'true', ...applied},
+        query: directoryQuery,
       );
       if (!mounted) return;
       setState(() {
         professionals = [...items(data['sponsored']), ...items(data['organic'])];
         resultCount = (data['count'] as int?) ?? professionals.length;
         nextAfter = data['next_after'] as int?;
+        market = '${data['market'] ?? ''}';
+        marketCount = (data['market_count'] as int?) ?? resultCount;
+        feeCurrency = '${data['fee_currency'] ?? ''}';
+        markets = items(data['markets']);
+        currencies = items(data['currencies']).whereType<String>().toList();
+        missingRates = data['missing_fee_rates'] == true;
         specialties = items(data['specialties']).whereType<String>().toList();
         durations = items(data['durations']).whereType<int>().toList();
         loading = false;
@@ -80,7 +123,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
     try {
       final data = await widget.apiClient.get(
         '/api/users/marketplace/search/',
-        query: {'include_facets': 'true', ...applied, 'after': after},
+        query: {...directoryQuery, 'after': after},
       );
       if (!mounted) return;
       setState(() {
@@ -108,7 +151,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
       if (name.isNotEmpty) 'q': name,
       if (selectedSpecialties.isNotEmpty)
         'specialties': selectedSpecialties.join(','),
-      if (fee.isNotEmpty) 'max_fee': fee,
+      if (fee.isNotEmpty) ...{'max_fee': fee, if (feeCurrency.isNotEmpty) 'fee_currency': feeCurrency},
       if (duration != null) 'duration': duration,
     };
     load();
@@ -134,6 +177,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
       }
     } else {
       next.remove(key);
+      if (key == 'max_fee') next.remove('fee_currency');
       if (key == 'q') query.clear();
       if (key == 'max_fee') {
         maxFee.clear();
@@ -142,6 +186,35 @@ class _TherapyScreenState extends State<TherapyScreen> {
       if (key == 'duration') duration = null;
     }
     applied = next;
+    load();
+  }
+
+  Future<void> changeMarket(String value) async {
+    setState(() { loading = true; error = null; });
+    try {
+      await widget.apiClient.patch('/api/tracking/hearteli/preferences/update_mine/',
+          body: {'directory_market': value});
+      if (!mounted) return;
+      currencyOverride = null;
+      maxFee.clear();
+      feeError = null;
+      applied.remove('max_fee');
+      applied.remove('fee_currency');
+      await load();
+    } catch (_) {
+      if (mounted) setState(() {
+        loading = false;
+        error = 'Could not save your market. Please try again.';
+      });
+    }
+  }
+
+  void changeCurrency(String value) {
+    currencyOverride = value;
+    maxFee.clear();
+    feeError = null;
+    applied.remove('max_fee');
+    applied.remove('fee_currency');
     load();
   }
 
@@ -207,6 +280,39 @@ class _TherapyScreenState extends State<TherapyScreen> {
             subtitle: 'Professional support is here if you want it.',
           ),
           const SizedBox(height: 18),
+          if (markets.isNotEmpty)
+            DropdownButtonFormField<String>(
+              key: ValueKey('market-$market'),
+              value: market,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Market'),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('All markets')),
+                for (final option in markets)
+                  DropdownMenuItem(value: option['code'] as String, child: Text('${option['name']}')),
+              ],
+              onChanged: loading || loadingMore ? null : (value) {
+                if (value != null && value != market) changeMarket(value);
+              },
+            ),
+          if (currencies.contains(feeCurrency)) ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: ValueKey('currency-$feeCurrency'),
+              value: feeCurrency,
+              decoration: const InputDecoration(labelText: 'Fee display and filter currency'),
+              items: [
+                for (final currency in currencies)
+                  DropdownMenuItem(value: currency, child: Text(currency)),
+              ],
+              onChanged: loading || loadingMore ? null : (value) {
+                if (value != null && value != feeCurrency) changeCurrency(value);
+              },
+            ),
+          ],
+          if (missingRates)
+            const Text('Some estimates are unavailable. Original prices are still shown; a fee cap excludes prices we cannot compare.'),
+          const SizedBox(height: 12),
           TextField(
             controller: query,
             maxLength: 100,
@@ -228,9 +334,9 @@ class _TherapyScreenState extends State<TherapyScreen> {
           TextField(
             controller: maxFee,
             decoration: InputDecoration(
-              labelText: 'Maximum fee (USD)',
+              labelText: feeCurrency.isEmpty ? 'Maximum fee' : 'Maximum fee ($feeCurrency)',
               hintText: 'Any price',
-              errorText: feeError,
+              error: inlineFieldError(feeError),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
@@ -257,13 +363,15 @@ class _TherapyScreenState extends State<TherapyScreen> {
             spacing: 8,
             children: [
               for (final entry in applied.entries)
-                if (entry.key == 'specialties')
+                if (entry.key == 'fee_currency')
+                  const SizedBox.shrink()
+                else if (entry.key == 'specialties')
                   for (final value in (entry.value as String).split(','))
                     InputChip(label: Text(value), onDeleted: loading || loadingMore ? null : () => removeFilter(entry.key, value))
                 else
                   InputChip(
                     label: Text(switch (entry.key) {
-                      'max_fee' => 'Up to USD ${entry.value}',
+                      'max_fee' => 'Up to $feeCurrency ${entry.value}',
                       'duration' => '${entry.value} minutes',
                       _ => '${entry.value}',
                     }),
@@ -281,10 +389,12 @@ class _TherapyScreenState extends State<TherapyScreen> {
               liveRegion: true,
               child: StatusPanel(
                 message: applied.isEmpty
-                    ? 'No eligible therapists are available in the directory right now.'
+                    ? (market.isNotEmpty && marketCount == 0
+                        ? 'No eligible therapists are available in your selected market.'
+                        : 'No eligible therapists are available in the directory right now.')
                     : 'No therapists match your filters.',
-                action: applied.isEmpty ? null : 'View all therapists',
-                onAction: applied.isEmpty ? null : clear,
+                action: applied.isEmpty ? (market.isEmpty ? null : 'View all markets') : 'Clear filters',
+                onAction: applied.isEmpty ? (market.isEmpty ? null : () => changeMarket('')) : clear,
               ),
             )
           else ...[
@@ -307,7 +417,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
                               title:
                                   '${raw['name']} ${raw['verified'] == true ? '✓ Verified' : ''}',
                               subtitle:
-                                  '${items(raw['offerings']).length} approved session options',
+                                  items(raw['offerings']).isEmpty ? 'Fee unavailable' : _offeringFee(context, items(raw['offerings']).first as Map),
                               onTap: () async {
                                 try {
                                   await widget.apiClient.post(
@@ -339,7 +449,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
                             title:
                                 '${raw['name']} ${raw['verified'] == true ? '✓ Verified' : ''}',
                             subtitle:
-                                '${items(raw['offerings']).length} approved session options',
+                                items(raw['offerings']).isEmpty ? 'Fee unavailable' : _offeringFee(context, items(raw['offerings']).first as Map),
                             onTap:
                                 () => Navigator.push(
                                   context,
@@ -515,6 +625,11 @@ class _BookTherapistState extends State<BookTherapist> {
   TimeOfDay? time;
   String format = 'Online';
   int? offeringId;
+  String? bookingError, timeError;
+  bool attempted = false;
+  final sessionFocus = FocusNode();
+  final dateFocus = FocusNode();
+  final timeFocus = FocusNode();
   Map<String, dynamic>? get selectedOffering {
     for (final o in items(widget.therapist['offerings'])) {
       if (o['id'] == offeringId) return Map<String, dynamic>.from(o);
@@ -556,18 +671,30 @@ class _BookTherapistState extends State<BookTherapist> {
 
   @override
   void dispose() {
+    sessionFocus.dispose();
+    dateFocus.dispose();
+    timeFocus.dispose();
     reason.dispose();
     referral.dispose();
     super.dispose();
   }
 
   Future<void> submit() async {
-    if (date == null || time == null || selectedOffering == null) return;
+    if (busy) return;
+    setState(() {
+      attempted = true;
+      bookingError = timeError = null;
+    });
+    if (selectedOffering == null || date == null || time == null) {
+      focusInvalidField(selectedOffering == null ? sessionFocus : date == null ? dateFocus : timeFocus);
+      return;
+    }
     final selectedClock = clock;
     if (selectedClock == null) return;
     final local = selectedClock.resolve(date!, time!);
     if (local == null) {
-      showCalmMessage(context, 'That time does not exist in your timezone. Choose another time.');
+      setState(() => timeError = 'That time does not exist in your timezone. Choose another time.');
+      focusInvalidField(timeFocus);
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -576,7 +703,7 @@ class _BookTherapistState extends State<BookTherapist> {
           (dialog) => AlertDialog(
             title: const Text('Review session request'),
             content: Text(
-              '${widget.therapist['name']}\n${selectedClock.describe(local)}\n$format\nFee: USD ${selectedOffering?['fee']} · ${selectedOffering?['duration_minutes']} minutes\n\nThis request does not share your private check-ins.',
+              '${widget.therapist['name']}\n${selectedClock.describe(local)}\n$format\nFee: ${_offeringFee(context, selectedOffering!)} · ${selectedOffering?['duration_minutes']} minutes\n\nThis request does not share your private check-ins.',
             ),
             actions: [
               TextButton(
@@ -617,7 +744,7 @@ class _BookTherapistState extends State<BookTherapist> {
         Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) setState(() => bookingError = formRequestError(e, invalid: 'That session could not be booked. Check the selected option and choose a future available time.'));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -641,7 +768,10 @@ class _BookTherapistState extends State<BookTherapist> {
         ),
         DropdownButtonFormField<int>(
           value: offeringId,
-          decoration: const InputDecoration(
+          focusNode: sessionFocus,
+          isExpanded: true,
+          decoration: InputDecoration(
+            error: inlineFieldError(attempted && selectedOffering == null ? 'Choose a session option.' : null),
             labelText: 'Approved session & fee',
           ),
           items:
@@ -650,7 +780,7 @@ class _BookTherapistState extends State<BookTherapist> {
                     (o) => DropdownMenuItem<int>(
                       value: o['id'] as int,
                       child: Text(
-                        '${o['duration_minutes']} minutes · USD ${o['fee']}',
+                        '${o['duration_minutes']} minutes · ${_fee(context, o['fee'], o['billing_currency'])}',
                       ),
                     ),
                   )
@@ -659,6 +789,7 @@ class _BookTherapistState extends State<BookTherapist> {
         ),
         const SizedBox(height: 18),
         OutlinedButton(
+          focusNode: dateFocus,
           onPressed: () async {
             final result = await showDatePicker(
               context: context,
@@ -666,7 +797,7 @@ class _BookTherapistState extends State<BookTherapist> {
               firstDate: clock?.today ?? DateTime.now(),
               lastDate: (clock?.today ?? DateTime.now()).add(const Duration(days: 180)),
             );
-            if (result != null) setState(() => date = result);
+            if (result != null && mounted) setState(() { date = result; timeError = null; });
           },
           child: Text(
             date == null
@@ -675,13 +806,15 @@ class _BookTherapistState extends State<BookTherapist> {
           ),
         ),
         const SizedBox(height: 10),
+        if (attempted && date == null) inlineFieldError('Choose a date.')!,
         OutlinedButton(
+          focusNode: timeFocus,
           onPressed: () async {
             final result = await showTimePicker(
               context: context,
               initialTime: const TimeOfDay(hour: 10, minute: 0),
             );
-            if (result != null) setState(() => time = result);
+            if (result != null && mounted) setState(() { time = result; timeError = null; });
           },
           child: Text(
             time == null
@@ -690,6 +823,8 @@ class _BookTherapistState extends State<BookTherapist> {
           ),
         ),
         const SizedBox(height: 12),
+        if (timeError != null || (attempted && time == null))
+          inlineFieldError(timeError ?? 'Choose a time.')!,
         DropdownButtonFormField<String>(
           value: format,
           decoration: const InputDecoration(labelText: 'Session format'),
@@ -721,8 +856,10 @@ class _BookTherapistState extends State<BookTherapist> {
               'Booking does not grant access to your check-ins. You can share selected context separately.',
         ),
         const SizedBox(height: 20),
+        if (bookingError != null)
+          Semantics(liveRegion: true, child: StatusPanel(message: bookingError!)),
         FilledButton(
-          onPressed: date == null || time == null || busy || loadingClock || clock == null
+          onPressed: busy || loadingClock || clock == null
               ? null
               : submit,
           child: Text(busy ? 'Submitting…' : 'Review booking'),

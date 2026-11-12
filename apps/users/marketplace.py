@@ -1,5 +1,7 @@
 from decimal import Decimal
 import re
+from django.db.models import Q
+from .directory_money import MARKETS, CURRENCIES, billing_currency, reference_rate
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
@@ -33,15 +35,15 @@ def quote_booking(user,therapist,offering_id,referral_code=None):
     commission=(offering.fee*rate/Decimal(100)).quantize(Decimal('.01'))
     from .appointment_time import appointment_zone
     provider_zone = appointment_zone(therapist)
-    return dict(provider_timezone=provider_zone.key if provider_zone else '',
+    return dict(billing_currency=offering.billing_currency, provider_timezone=provider_zone.key if provider_zone else '',
         booking_credential_verified=True,fee=offering.fee,duration_minutes=offering.duration_minutes,commission_percent=rate,
         acquisition_source=source,commission=commission,therapist_earnings=offering.fee-commission)
 
 class OfferingSerializer(serializers.ModelSerializer):
     class Meta:
         model=SessionOffering
-        fields=['id','duration_minutes','fee','approved','active']
-        read_only_fields=['id','approved']
+        fields=['id','duration_minutes','fee','billing_currency','approved','active']
+        read_only_fields=['id','approved','billing_currency']
 
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -54,6 +56,14 @@ class SearchFilters(serializers.Serializer):
     practitioner_type=serializers.CharField(required=False,allow_blank=True,max_length=100)
     max_fee=serializers.DecimalField(required=False,max_digits=10,decimal_places=2,min_value=0)
     duration=serializers.IntegerField(required=False,min_value=10,max_value=240)
+    market=serializers.ChoiceField(required=False,allow_blank=True,choices=list(MARKETS))
+    locale_currency=serializers.ChoiceField(required=False,choices=CURRENCIES)
+    fee_currency=serializers.CharField(required=False,min_length=3,max_length=3)
+
+    def validate_fee_currency(self, value):
+        if value not in (*CURRENCIES, billing_currency()):
+            raise serializers.ValidationError('Choose a supported fee currency.')
+        return value
     after=serializers.IntegerField(required=False,min_value=1)
     modality=serializers.ChoiceField(required=False,choices=['Online','In person'])
 
@@ -61,10 +71,21 @@ class MarketplaceSearchView(APIView):
     permission_classes=[IsAuthenticated]
     def get(self,request):
         filters=SearchFilters(data=request.query_params);filters.is_valid(raise_exception=True)
-        profiles=filtered_profiles(filters.validated_data)
+        criteria = dict(filters.validated_data)
+        directory = request.query_params.get('include_facets') == 'true'
+        pref = getattr(request.user, 'hearteli_preferences', None)
+        if directory and 'market' not in criteria:
+            criteria['market'] = getattr(pref, 'directory_market', '')
+        market = criteria.get('market', '')
+        target = criteria.get('fee_currency') or (MARKETS[market][1] if market else criteria.get('locale_currency', billing_currency()))
+        base = filtered_profiles({'market': market})
+        source_currencies = set(SessionOffering.objects.filter(
+            therapist__in=base, approved=True, active=True,
+        ).values_list('billing_currency', flat=True)) if directory else set()
+        rates = {source: reference_rate(source, target) for source in source_currencies if source != target}
+        profiles=filtered_profiles(criteria, target=target, rates=rates)
         from .serializers import TherapistPublicSerializer
         from .monetisation import active_campaigns,campaign_eligible,ticket_payload,adult
-        directory = request.query_params.get('include_facets') == 'true'
         after = filters.validated_data.get('after') if directory else None
         sponsored=[];seen=set()
         for campaign in (active_campaigns('search').filter(therapist__in=profiles) if not after and adult(request.user) else []):
@@ -88,7 +109,20 @@ class MarketplaceSearchView(APIView):
         result = {'sponsored': sponsored, 'organic': organic}
         if directory:
             result['next_after'] = rows[49].pk if len(rows) > 50 else None
-            base = filtered_profiles({})
+            result.update(
+                market=market, markets=[{'code': code, 'name': item[0], 'currency': item[1]}
+                                       for code, item in MARKETS.items()],
+                market_count=base.count(), billing_currency=billing_currency(),
+                fee_currency=target, currencies=sorted(set(CURRENCIES) | {billing_currency()}),
+                missing_fee_rates=any(value is None for value in rates.values()),
+            )
+            for provider in sponsored + organic:
+                for offering in provider.get('offerings', []):
+                    rate = rates.get(offering['billing_currency'])
+                    if rate:
+                        amount = Decimal(str(offering['fee'])) * Decimal(rate['rate'])
+                        offering['estimate'] = {**rate, 'amount': str(amount.quantize(Decimal('.01')))}
+
             options = SessionOffering.objects.filter(
                 therapist__in=base, approved=True, active=True,
             )
@@ -107,8 +141,9 @@ def specialty_tokens(value):
     return {part.strip() for part in re.split(r'[,;|•]', value) if part.strip()}
 
 
-def filtered_profiles(filters):
+def filtered_profiles(filters, target=None, rates=None):
     qs=eligible_profiles().select_related('user')
+    if filters.get('market'):qs=qs.filter(directory_market=filters['market'])
     if filters.get('q'):qs=qs.filter(user__name__icontains=filters['q'])
     if filters.get('specialties'):
         selected = {token.casefold() for token in specialty_tokens(filters['specialties'])}
@@ -122,8 +157,19 @@ def filtered_profiles(filters):
     if filters.get('practitioner_type'):qs=qs.filter(practitioner_type__icontains=filters['practitioner_type'])
     if filters.get('modality'):qs=qs.filter(user__therapy_application__modalities__icontains=filters['modality'])
     offering_filters={'session_offerings__approved':True,'session_offerings__active':True}
-    if 'max_fee' in filters:offering_filters['session_offerings__fee__lte']=filters['max_fee']
+    if 'max_fee' in filters and not filters.get('fee_currency'):
+        offering_filters['session_offerings__fee__lte'] = filters['max_fee']
     if 'duration' in filters:offering_filters['session_offerings__duration_minutes']=filters['duration']
+    if 'max_fee' in filters and filters.get('fee_currency'):
+        offerings = SessionOffering.objects.filter(approved=True, active=True)
+        if 'duration' in filters:
+            offerings = offerings.filter(duration_minutes=filters['duration'])
+        cap = filters['max_fee']
+        matches = Q(billing_currency=target, fee__lte=cap)
+        for source, rate in (rates or {}).items():
+            if rate:
+                matches |= Q(billing_currency=source, fee__lte=cap / Decimal(rate['rate']))
+        return qs.filter(pk__in=offerings.filter(matches).values('therapist_id')).distinct()
     return qs.filter(**offering_filters).distinct()
 
 

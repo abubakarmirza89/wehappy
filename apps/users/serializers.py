@@ -177,8 +177,8 @@ class UserAppointmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Appointment
-        fields = ["id", "display_time", "duration_minutes", "therapist_id", "review_submitted", "url", "therapist", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
-        read_only_fields = ["duration_minutes","fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        fields = ["id", "display_time", "billing_currency", "duration_minutes", "therapist_id", "review_submitted", "url", "therapist", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        read_only_fields = ["billing_currency", "duration_minutes","fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
 
 
 class TherapistAppointmentSerializer(serializers.ModelSerializer):
@@ -199,8 +199,8 @@ class TherapistAppointmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Appointment
-        fields = ["id", "display_time", "url", "user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
-        read_only_fields = ["user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "created_at"]
+        fields = ["id", "display_time", "billing_currency", "url", "user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        read_only_fields = ["billing_currency", "user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "created_at"]
 
 
 class WithdrawalRequestSerializer(serializers.ModelSerializer):

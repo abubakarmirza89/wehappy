@@ -20,6 +20,7 @@ from .models import (CircleConnection, CircleSignupInvitation, ConsentEvent, Emp
                      SupportOutcome, TherapistContextGrant)
 from apps.users.models import User
 from apps.users.communications import send_circle_signup_invitation
+from .data_export import ExportThrottle
 
 
 CIRCLE_INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -453,8 +454,14 @@ class PreferencesSerializer(serializers.ModelSerializer):
     class Meta:
         model = HearteliPreferences
         fields = ['use_contexts', 'reminder_enabled', 'nudge_notifications', 'quiet_start',
-                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'timezone_selected', 'reminder_time', 'sponsor_opt_in']
+                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'timezone_selected', 'reminder_time', 'sponsor_opt_in', 'directory_market']
         read_only_fields = ['timezone_selected']
+
+    def validate_directory_market(self, value):
+        from apps.users.directory_money import MARKETS
+        if value and value not in MARKETS:
+            raise ValidationError('Select a listed market.')
+        return value
 
     def validate_timezone_name(self, value):
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -543,18 +550,21 @@ class TherapyGrantViewSet(viewsets.ModelViewSet):
 class DataControlViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
-    def list(self, request):
-        """An authenticated, member-only copy of personal Hearteli data."""
-        check_ins = list(MoodCheckIn.objects.filter(user=request.user).values(
-            'id', 'date', 'feeling_category', 'notes', 'context_tags', 'support_preferences'))
-        nudges = list(EmpathyNudge.objects.filter(sender=request.user).values(
-            'id', 'recipient_id', 'message', 'support_preference', 'status', 'delivery_status', 'created_at'))
-        outcomes = list(SupportOutcome.objects.filter(member=request.user).values(
-            'nudge_id', 'result', 'private_note', 'created_at'))
-        audit = list(ConsentEvent.objects.filter(actor=request.user).values(
-            'event', 'categories', 'occurred_at'))
-        return Response({'check_ins': check_ins, 'nudges_sent': nudges,
-                         'outcomes': outcomes, 'consent_events': audit})
+    @action(detail=False, methods=['post'], url_path='export', throttle_classes=[ExportThrottle])
+    def export(self, request):
+        from django.http import HttpResponse
+        from .data_export import build_export
+        password = request.data.get('password')
+        if not isinstance(password, str) or not 1 <= len(password) <= 1024:
+            raise ValidationError({'password': 'Enter your current password.'})
+        if not request.user.check_password(password):
+            raise PermissionDenied('Your current password did not match.')
+        response = HttpResponse(build_export(request.user), content_type='application/zip')
+        response['Content-Disposition'] = (
+            f'attachment; filename="hearteli-data-export-{timezone.now().date().isoformat()}.zip"'
+        )
+        response['Cache-Control'] = 'private, no-store'
+        return response
 
     @action(detail=False, methods=['post'])
     def delete_account(self, request):

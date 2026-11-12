@@ -1,3 +1,4 @@
+from .directory_money import MARKETS, billing_currency
 import uuid
 from decimal import Decimal
 from .private_storage import CredentialStorage,SponsorCreativeStorage
@@ -47,6 +48,7 @@ class User(AbstractUser):
     
 
 class Therapist(models.Model):
+    directory_market = models.CharField(max_length=2, blank=True, default='', choices=[(k, v[0]) for k, v in MARKETS.items()])
     practitioner_type=models.CharField(max_length=100,default='Therapist')
     registration_number=models.CharField(max_length=120,blank=True)
     public_reviews_permitted=models.BooleanField(default=False)
@@ -97,6 +99,7 @@ def create_therapist_profile(sender, instance, created, **kwargs):
 
 
 class Appointment(models.Model):
+    billing_currency = models.CharField(max_length=3, default=billing_currency, editable=False)
     provider_timezone = models.CharField(max_length=64, blank=True, default='')
     booking_credential_verified=models.BooleanField(default=False)
     duration_minutes=models.PositiveIntegerField(default=60)
@@ -388,10 +391,11 @@ class MarketplacePolicy(models.Model):
 
 
 class SessionOffering(models.Model):
+    billing_currency = models.CharField(max_length=3, default=billing_currency, editable=False)
     therapist=models.ForeignKey(Therapist,on_delete=models.CASCADE,related_name='session_offerings')
     duration_minutes=models.PositiveIntegerField(validators=[MinValueValidator(10),MaxValueValidator(240)])
     fee=models.DecimalField(max_digits=10,decimal_places=2,validators=[MinValueValidator(Decimal('0.01'))])
-    def __str__(self):return f'{self.duration_minutes} minutes — USD {self.fee}'
+    def __str__(self):return f'{self.duration_minutes} minutes — {self.billing_currency} {self.fee}'
     approved=models.BooleanField(default=False)
     active=models.BooleanField(default=True)
     reviewed_by=models.ForeignKey(User,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')

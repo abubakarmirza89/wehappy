@@ -4,6 +4,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/validation/form_feedback.dart';
+import '../../../core/validation/validators.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
@@ -113,8 +115,9 @@ class _CircleScreenState extends State<CircleScreen> {
                       TextField(
                         controller: email,
                         keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Email address',
+                          error: inlineFieldError(inviteError),
                         ),
                         onChanged: (_) {
                           update(() {
@@ -150,15 +153,6 @@ class _CircleScreenState extends State<CircleScreen> {
                               () => relationship = value ?? relationship,
                             ),
                       ),
-                      if (inviteError != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          inviteError!,
-                          style: TextStyle(
-                            color: Theme.of(dialog).colorScheme.error,
-                          ),
-                        ),
-                      ],
                       if (showSignupInvite) ...[
                         const SizedBox(height: 12),
                         SizedBox(
@@ -191,7 +185,7 @@ class _CircleScreenState extends State<CircleScreen> {
                                         }
                                       } catch (e) {
                                         if (dialog.mounted) {
-                                          update(() => inviteError = '$e');
+                                          update(() => inviteError = formRequestError(e, invalid: 'Check the invitation details or ask for a new code.'));
                                         }
                                       } finally {
                                         if (dialog.mounted) {
@@ -217,11 +211,12 @@ class _CircleScreenState extends State<CircleScreen> {
                               ? null
                               : () async {
                                 final recipientEmail = email.text.trim();
-                                if (recipientEmail.isEmpty) {
+                                final validation = Validators.email(recipientEmail);
+                                if (validation != null) {
                                   update(
                                     () =>
                                         inviteError =
-                                            'Enter their email address.',
+                                            validation,
                                   );
                                   return;
                                 }
@@ -249,7 +244,9 @@ class _CircleScreenState extends State<CircleScreen> {
                                 } catch (e) {
                                   if (dialog.mounted) {
                                     update(() {
-                                      inviteError = '$e';
+                                      inviteError = formRequestError(e,
+                                          invalid: 'Check your invitation details and try again.',
+                                          missing: 'No Hearteli account was found. You can send a signup invitation.');
                                       showSignupInvite =
                                           e is ApiException &&
                                           e.statusCode == 404;
@@ -373,9 +370,10 @@ class _CircleScreenState extends State<CircleScreen> {
                         controller: code,
                         textCapitalization: TextCapitalization.characters,
                         autocorrect: false,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Invite code',
                           hintText: 'Enter code',
+                          error: inlineFieldError(inviteError),
                         ),
                         onChanged: (_) {
                           if (inviteError != null)
@@ -409,15 +407,6 @@ class _CircleScreenState extends State<CircleScreen> {
                           label: const Text('Scan QR'),
                         ),
                       ),
-                      if (inviteError != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          inviteError!,
-                          style: TextStyle(
-                            color: Theme.of(dialog).colorScheme.error,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                   actions: [
@@ -430,6 +419,10 @@ class _CircleScreenState extends State<CircleScreen> {
                           redeeming
                               ? null
                               : () async {
+                                if (code.text.trim().isEmpty) {
+                                  update(() => inviteError = 'Enter the Circle invite code.');
+                                  return;
+                                }
                                 update(() {
                                   redeeming = true;
                                   inviteError = null;
@@ -454,7 +447,7 @@ class _CircleScreenState extends State<CircleScreen> {
                                   }
                                 } catch (e) {
                                   if (dialog.mounted)
-                                    update(() => inviteError = '$e');
+                                    update(() => inviteError = formRequestError(e, invalid: 'Check the invitation details or ask for a new code.'));
                                 } finally {
                                   if (dialog.mounted) {
                                     update(() => redeeming = false);

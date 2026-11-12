@@ -55,6 +55,30 @@ class MonetisationTests(TestCase):
         self.assertEqual(self.search(include_facets='true', specialties='stress,Grief')['count'], 1)
         self.assertEqual(self.search(include_facets='true', specialties='Stressful')['count'], 0)
 
+    def test_saved_market_and_cross_currency_cap_preserve_billing_amount(self):
+        from unittest.mock import patch
+        self.profile.directory_market = 'AU'
+        self.profile.save(update_fields=['directory_market'])
+        self.option.billing_currency = 'USD'
+        self.option.save(update_fields=['billing_currency'])
+        HearteliPreferences.objects.create(user=self.user, directory_market='AU')
+        rate = {'base': 'USD', 'quote': 'AUD', 'rate': '1.5', 'date': '2026-11-12', 'source': 'test'}
+        with patch('apps.users.marketplace.reference_rate', return_value=rate):
+            result = self.search(include_facets='true', fee_currency='AUD', max_fee='150')
+            self.assertEqual(result['market'], 'AU')
+            self.assertEqual(result['count'], 1)
+            option = result['organic'][0]['offerings'][0]
+            self.assertEqual(option['billing_currency'], 'USD')
+            self.assertEqual(option['fee'], '100.00')
+            self.assertEqual(option['estimate']['amount'], '150.00')
+            self.assertEqual(self.search(include_facets='true', fee_currency='AUD', max_fee='149')['count'], 0)
+            self.assertEqual(self.search(include_facets='true', market='GB')['market_count'], 0)
+        with patch('apps.users.marketplace.reference_rate', return_value=None):
+            result = self.search(include_facets='true', fee_currency='AUD')
+            self.assertTrue(result['missing_fee_rates'])
+            self.assertEqual(result['organic'][0]['offerings'][0]['fee'], '100.00')
+            self.assertEqual(self.search(include_facets='true', fee_currency='AUD', max_fee='150')['count'], 0)
+
     def test_fetch_is_not_impression_and_events_are_idempotent(self):
         c=self.campaign();data=self.search();ticket=data['sponsored'][0]['sponsor']['event_id']
         self.assertEqual(c.tickets.filter(shown_at__isnull=False).count(),0)

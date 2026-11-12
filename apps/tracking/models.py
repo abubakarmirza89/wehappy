@@ -433,6 +433,7 @@ class ConsentEvent(models.Model):
 
 
 class HearteliPreferences(models.Model):
+    directory_market = models.CharField(max_length=2, blank=True, default='')
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='hearteli_preferences')
     use_contexts = models.JSONField(default=list, blank=True)
     reminder_enabled = models.BooleanField(default=False)

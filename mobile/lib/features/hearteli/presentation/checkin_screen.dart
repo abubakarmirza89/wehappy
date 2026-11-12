@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
@@ -113,7 +114,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     'support_preferences': preferences.toList(),
   };
   Future<void> _save() async {
-    if (feeling < 0) return;
+    if (busy || feeling < 0) return;
     setState(() {
       busy = true;
       error = null;
@@ -131,7 +132,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       });
       await _loadConnections();
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -155,7 +156,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
               .toList(),
         );
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
@@ -205,7 +206,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         _showProgress();
       }
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }

@@ -224,7 +224,7 @@ def webhook(request):
             payment_intent=obj.get('payment_intent')
             if isinstance(payment_intent, dict):
                 payment_intent=payment_intent.get('id')
-            if a and payment_intent and obj.get('currency')==settings.HEARTELI_CURRENCY and obj.get('amount_total')==int(a.fee*100):
+            if a and payment_intent and obj.get('currency')==a.billing_currency.lower() and obj.get('amount_total')==int(a.fee*100):
                 settle_payment(a.pk,payment_intent)
         elif kind=='checkout.session.async_payment_failed' and obj.get('mode')=='payment':
             Appointment.objects.filter(
@@ -235,7 +235,7 @@ def webhook(request):
             if subid: update_subscription(stripe.Subscription.retrieve(subid,api_key=settings.STRIPE_SECRET_KEY))
         elif kind=='payment_intent.succeeded':
             a=Appointment.objects.select_for_update().filter(payment_intent_id=obj['id']).first()
-            if a and obj.get('currency')==settings.HEARTELI_CURRENCY and obj.get('amount_received')==int(a.fee*100):
+            if a and obj.get('currency')==a.billing_currency.lower() and obj.get('amount_received')==int(a.fee*100):
                 settle_payment(a.pk,obj['id'])
         elif kind=='charge.refunded':
             a=Appointment.objects.select_for_update().filter(payment_intent_id=obj.get('payment_intent')).first()
@@ -255,7 +255,7 @@ def appointment_checkout(a):
         if previous.status!='expired':
             raise ValidationError('This appointment payment is already being confirmed.')
     session=stripe.checkout.Session.create(mode='payment',client_reference_id=str(a.pk),
-        line_items=[{'price_data':{'currency':settings.HEARTELI_CURRENCY,'unit_amount':int(a.fee*100),
+        line_items=[{'price_data':{'currency':a.billing_currency.lower(),'unit_amount':int(a.fee*100),
             'product_data':{'name':'Hearteli appointment'}},'quantity':1}],
         payment_intent_data={'metadata':{'appointment_id':str(a.pk)}},
         success_url=settings.HEARTELI_PUBLIC_URL+f'/practice/appointments/{a.pk}/',

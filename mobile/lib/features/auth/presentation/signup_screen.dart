@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/validation/validators.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../hearteli/presentation/components.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_text_field.dart';
@@ -33,7 +34,7 @@ class _SignupScreenState extends State<SignupScreen> {
   String? _error;
 
   Future<void> _signup() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_busy || !_formKey.currentState!.validate()) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -49,13 +50,8 @@ class _SignupScreenState extends State<SignupScreen> {
         AppToast.success(context, 'Account created. Please sign in.');
         Navigator.pop(context);
       }
-    } on ApiException catch (error) {
-      setState(() => _error = error.message);
-      if (mounted) AppToast.error(context, error.message);
-    } catch (_) {
-      setState(() => _error = 'Unable to create account right now.');
-      if (mounted)
-        AppToast.error(context, 'Unable to create account right now.');
+    } catch (error) {
+      if (mounted) setState(() => _error = formRequestError(error, invalid: 'Check your email and password. If you already have an account, sign in instead.'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
