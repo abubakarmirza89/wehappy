@@ -85,6 +85,8 @@ class ConnectionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        if self.action == 'list' and self.request.query_params.get('nudge_eligible') == 'true':
+            return nudge_connections(user).select_related('owner', 'recipient')
         return CircleConnection.objects.filter(Q(owner=user) | Q(recipient=user)).select_related('owner', 'recipient')
 
     @action(detail=False, methods=['post'], url_path='invite-code')
@@ -291,6 +293,13 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
+def nudge_connections(user):
+    return CircleConnection.objects.filter(
+        owner=user, accepted_at__isnull=False, declined_at__isnull=True,
+        may_receive_nudges=True, recipient__is_active=True,
+    )
+
+
 class NudgeSerializer(serializers.ModelSerializer):
     idempotency_key = serializers.UUIDField(required=True)
     recipient_name = serializers.CharField(source='recipient.name', read_only=True)
@@ -311,11 +320,12 @@ class NudgeSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         user = self.context['request'].user
-        check_in = attrs['check_in']
-        if check_in.user_id != user.id or not (check_in.feeling_category or check_in.moods.exists()):
+        check_in = attrs.get('check_in')
+        if check_in is not None and (
+            check_in.user_id != user.id or not (check_in.feeling_category or check_in.moods.exists())
+        ):
             raise ValidationError({'check_in': 'Choose your completed check-in.'})
-        connection = CircleConnection.objects.filter(owner=user, recipient=attrs['recipient'],
-                          accepted_at__isnull=False, may_receive_nudges=True).first()
+        connection = nudge_connections(user).filter(recipient=attrs['recipient']).first()
         if not connection:
             raise ValidationError({'recipient': 'Recipient must accept and enable nudges.'})
         if attrs.get('support_preference') and not connection.may_receive_preference:
@@ -352,14 +362,18 @@ class NudgeViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             with transaction.atomic():
-                connection = CircleConnection.objects.select_for_update().filter(
-                    owner=request.user, recipient=serializer.validated_data['recipient'],
-                    accepted_at__isnull=False, may_receive_nudges=True).first()
+                connection = nudge_connections(request.user).select_for_update().filter(
+                    recipient=serializer.validated_data['recipient'],
+                ).first()
                 if not connection:
                     raise ValidationError({'recipient': 'Permission changed. Review the recipient again.'})
                 if serializer.validated_data.get('support_preference') and not connection.may_receive_preference:
                     raise ValidationError({'support_preference': 'Permission changed. Review the preview again.'})
-                if EmpathyNudge.objects.filter(sender=request.user, recipient=connection.recipient, check_in=serializer.validated_data['check_in'], status='sent').exists():
+                check_in = serializer.validated_data.get('check_in')
+                if check_in is not None and EmpathyNudge.objects.filter(
+                    sender=request.user, recipient=connection.recipient,
+                    check_in=check_in, status='sent',
+                ).exists():
                     raise ValidationError({'recipient': 'There is already a pending nudge for this check-in. Open that nudge instead.'})
                 nudge = serializer.save(sender=request.user)
                 nudge.refresh_from_db()

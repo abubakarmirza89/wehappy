@@ -396,7 +396,7 @@ class EmpathyNudge(models.Model):
     support_context=models.CharField(max_length=12,default='unknown',choices=[('unknown','Unknown'),('ordinary','Ordinary support'),('safety','Safety pathway')])
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_sent')
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_received')
-    check_in = models.ForeignKey(MoodCheckIn, on_delete=models.CASCADE, related_name='hearteli_nudges')
+    check_in = models.ForeignKey(MoodCheckIn, null=True, blank=True, on_delete=models.CASCADE, related_name='hearteli_nudges')
     message = models.CharField(max_length=500)
     support_preference = models.CharField(max_length=120, blank=True)
     # Historical nudges predate retry keys; all new API writes require one.

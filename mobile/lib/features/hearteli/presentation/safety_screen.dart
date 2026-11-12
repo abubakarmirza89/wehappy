@@ -43,7 +43,9 @@ class _SafetyScreenState extends State<SafetyScreen> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(),
     body: ListView(
-      padding: screenPadding,
+      padding: screenPadding.add(
+        EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+      ),
       children: [
         const Icon(
           Icons.health_and_safety_outlined,
@@ -93,6 +95,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
             icon: const Icon(Icons.support_agent),
             label: const Text('Lifeline — 13 11 14 (24/7)'),
           ),
+          const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: () => dial('1300224636'),
             icon: const Icon(Icons.support_agent),
@@ -110,6 +113,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
             icon: const Icon(Icons.support_agent),
             label: const Text('Suicide & Crisis Lifeline — call 988'),
           ),
+          const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: () => text('988'),
             icon: const Icon(Icons.sms_outlined),
@@ -137,6 +141,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
           icon: const Icon(Icons.people_outline),
           label: const Text('Contact someone in my Circle'),
         ),
+        const SizedBox(height: 20),
         const HearteliCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

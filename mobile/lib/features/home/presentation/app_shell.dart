@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../hearteli/presentation/checkin_screen.dart';
 import '../../hearteli/presentation/circle_screen.dart';
 import '../../hearteli/presentation/components.dart';
+import '../../hearteli/presentation/nudge_compose_screen.dart';
 import '../../hearteli/presentation/insights_screen.dart';
 import '../../hearteli/presentation/onboarding_screen.dart';
 import '../../hearteli/presentation/settings_screen.dart';
@@ -35,6 +36,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int index = 0, refresh = 0;
   bool workContext = false;
+  bool hasOpenedWork = false;
   Future<bool>? _notificationSetup;
 
   @override
@@ -164,16 +166,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         userId: widget.sessionStore.userId ?? '',
         onComplete: complete,
       ),
-      workContext
-          ? WorkScreen(
-            apiClient: widget.apiClient,
-            sessionStore: widget.sessionStore,
-          )
-          : InsightsScreen(
+      IndexedStack(
+        index: workContext ? 1 : 0,
+        children: [
+          InsightsScreen(
             key: ValueKey('insights-$refresh'),
             apiClient: widget.apiClient,
             sessionStore: widget.sessionStore,
           ),
+          if (hasOpenedWork)
+            WorkScreen(
+              apiClient: widget.apiClient,
+              sessionStore: widget.sessionStore,
+            )
+          else
+            const SizedBox.shrink(),
+        ],
+      ),
       MoreScreen(
         apiClient: widget.apiClient,
         sessionStore: widget.sessionStore,
@@ -186,16 +195,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           PopupMenuButton<bool>(
             tooltip: 'Switch personal or work context',
             icon: const Icon(Icons.account_circle_outlined),
-            onSelected:
-                (value) => setState(() {
-                  workContext = value;
-                  index = 0;
-                }),
-            itemBuilder:
-                (_) => const [
-                  PopupMenuItem(value: false, child: Text('Personal')),
-                  PopupMenuItem(value: true, child: Text('For Work')),
-                ],
+            onSelected: (value) {
+              if (value == workContext) return;
+              setState(() {
+                workContext = value;
+                hasOpenedWork = hasOpenedWork || value;
+                index = value ? 3 : 0;
+              });
+            },
+            itemBuilder: (_) => [
+              CheckedPopupMenuItem(
+                value: false,
+                checked: !workContext,
+                child: const Text('Personal'),
+              ),
+              CheckedPopupMenuItem(
+                value: true,
+                checked: workContext,
+                child: const Text('For Work'),
+              ),
+            ],
           ),
         ],
       ),
@@ -357,7 +376,19 @@ class _HomeScreenState extends State<HomeScreen> {
               _QuickAction(
                 icon: Icons.send_outlined,
                 label: 'Nudge',
-                onTap: widget.onCheckIn,
+                onTap: () async {
+                  final sent = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      settings: const RouteSettings(name: '/nudge/choose-recipient'),
+                      builder: (_) => NudgeComposeScreen(
+                        apiClient: widget.apiClient,
+                        sessionStore: widget.sessionStore,
+                      ),
+                    ),
+                  );
+                  if (sent == true && mounted) load();
+                },
               ),
               _QuickAction(
                 icon: Icons.calendar_today_outlined,

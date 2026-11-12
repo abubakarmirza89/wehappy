@@ -25,6 +25,53 @@ class HearteliConsentTests(APITestCase):
         self.checkin.moods.add(self.mood)
         self.client.force_authenticate(user=self.sender)
 
+    def test_standalone_nudge_is_explicit_and_does_not_create_a_check_in(self):
+        CircleConnection.objects.create(
+            owner=self.sender, recipient=self.recipient,
+            accepted_at=timezone.now(), may_receive_nudges=True,
+        )
+        before = MoodCheckIn.objects.count()
+        chooser = self.client.get('/api/tracking/hearteli/circle/', {'nudge_eligible': 'true'})
+        self.assertEqual(chooser.status_code, 200)
+        self.assertEqual([row['recipient'] for row in chooser.data], [self.recipient.pk])
+        self.assertFalse(EmpathyNudge.objects.exists())
+
+        url = '/api/tracking/hearteli/nudges/'
+        payload = {'recipient': self.recipient.pk, 'message': 'Can we talk?',
+                   'idempotency_key': str(uuid.uuid4())}
+        self.assertEqual(self.client.post(url, payload, format='json').status_code, 201)
+        self.assertEqual(self.client.post(url, payload, format='json').status_code, 200)
+        self.assertIsNone(EmpathyNudge.objects.get().check_in_id)
+        self.assertEqual(MoodCheckIn.objects.count(), before)
+        delivery = EmailDelivery.objects.get(kind='nudge', channel='push')
+        self.assertNotIn(payload['message'], delivery.message)
+
+    def test_nudge_chooser_excludes_ineligible_and_send_rechecks_permission(self):
+        outgoing = CircleConnection.objects.create(
+            owner=self.sender, recipient=self.recipient,
+            accepted_at=timezone.now(), may_receive_nudges=True,
+        )
+        CircleConnection.objects.create(
+            owner=self.other, recipient=self.sender,
+            accepted_at=timezone.now(), may_receive_nudges=True,
+        )
+        chooser = '/api/tracking/hearteli/circle/'
+        url = '/api/tracking/hearteli/nudges/'
+        payload = {'recipient': self.recipient.pk, 'message': 'Hello',
+                   'idempotency_key': str(uuid.uuid4())}
+        outgoing.may_receive_nudges = False
+        outgoing.save(update_fields=['may_receive_nudges'])
+        self.assertEqual(self.client.get(chooser, {'nudge_eligible': 'true'}).data, [])
+        self.assertEqual(self.client.post(url, payload, format='json').status_code, 400)
+
+        outgoing.may_receive_nudges = True
+        outgoing.save(update_fields=['may_receive_nudges'])
+        self.recipient.is_active = False
+        self.recipient.save(update_fields=['is_active'])
+        self.assertEqual(self.client.get(chooser, {'nudge_eligible': 'true'}).data, [])
+        self.assertEqual(self.client.post(url, payload, format='json').status_code, 400)
+        self.assertFalse(EmpathyNudge.objects.exists())
+
     def test_circle_code_is_unique_rotated_and_expires(self):
         url = '/api/tracking/hearteli/circle/invite-code/'
         first = self.client.post(url, {'relationship': 'Friend'}, format='json')
