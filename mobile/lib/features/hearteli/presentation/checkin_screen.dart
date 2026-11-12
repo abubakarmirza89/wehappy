@@ -286,12 +286,15 @@ class _CheckInScreenState extends State<CheckInScreen> {
         : feeling >= 3
         ? 'You can let someone you trust know that a kind word might mean a lot today.'
         : 'Making space for how you feel is a meaningful step.';
+    final isPrivateCompletion =
+        step == 3 && (feeling < 3 && !patternSuggested || sharingDeclined);
+    final totalSteps = isPrivateCompletion ? 4 : 5;
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
             LinearProgressIndicator(
-              value: (step + 1) / 5,
+              value: (step + 1) / totalSteps,
               color: AppColors.coral,
               backgroundColor: AppColors.blush,
               minHeight: 4,
@@ -310,7 +313,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       ),
                     ),
                   Text(
-                    'STEP ${step + 1} OF 5',
+                    'STEP ${step + 1} OF $totalSteps',
                     style: const TextStyle(
                       color: AppColors.coral,
                       fontSize: 12,
@@ -623,8 +626,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                             : 'Continue',
                       ),
                     ),
-                  if (step == 3 && (feeling < 3 && !patternSuggested ||
-                      sharingDeclined))
+                  if (isPrivateCompletion)
                     FilledButton(
                       onPressed: _finishPrivateCheckIn,
                       child: const Text('Done'),

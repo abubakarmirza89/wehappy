@@ -5,6 +5,7 @@ import '../../therapist/presentation/practice_shell.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../hearteli/presentation/components.dart';
+import '../../hearteli/presentation/therapy_screen.dart';
 
 class AppointmentsScreen extends StatefulWidget {
   const AppointmentsScreen({super.key, required this.apiClient});
@@ -191,8 +192,16 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
           else if (error != null)
             StatusPanel(message: error!, action: 'Try again', onAction: load)
           else if (appointments.isEmpty)
-            const StatusPanel(
-              message: 'No appointments yet. Explore therapists to request your first session.',
+            StatusPanel(
+              message:
+                  'No appointments yet. Explore therapists to request your first session.',
+              action: 'Explore therapists',
+              onAction: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TherapyScreen(apiClient: widget.apiClient),
+                ),
+              ),
             )
           else
             for (final raw in appointments)
