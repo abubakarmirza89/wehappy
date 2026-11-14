@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../therapist/presentation/practice_shell.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../../core/appointments/appointment_time.dart';
 import '../../hearteli/presentation/components.dart';
 import '../../hearteli/presentation/therapy_screen.dart';
@@ -18,7 +19,7 @@ class AppointmentsScreen extends StatefulWidget {
 class _AppointmentsScreenState extends State<AppointmentsScreen> {
   List<dynamic> appointments = [];
   bool loading = true, busy = false;
-  String? error;
+  String? error, actionError;
   @override
   void initState() {
     super.initState();
@@ -44,6 +45,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   }
 
   Future<void> change(Map item, bool cancel) async {
+    if (busy) return;
     Map<String, dynamic> payload = {};
     String? reviewTime;
     if (!cancel) {
@@ -99,7 +101,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       ),
     );
     if (!mounted || yes != true) return;
-    setState(() => busy = true);
+    setState(() { busy = true; actionError = null; });
     try {
       if (cancel) {
         await widget.apiClient.post(
@@ -114,7 +116,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       }
       await load();
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) setState(() => actionError = formRequestError(e,
+        invalid: 'This appointment could not be updated. Confirm the time or refresh and try again.'));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -200,6 +203,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
             subtitle: 'Times use your Hearteli timezone, or your device timezone when none is selected.',
           ),
           const SizedBox(height: 20),
+          if (actionError != null)
+            Semantics(liveRegion: true, child: StatusPanel(message: actionError!)),
           if (loading)
             const Center(child: CircularProgressIndicator())
           else if (error != null)

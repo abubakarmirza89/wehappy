@@ -1,4 +1,5 @@
 from django.contrib.auth.views import LoginView
+from django.contrib.auth.forms import AuthenticationForm
 from django.urls import reverse
 from django import forms
 from django.contrib.auth.decorators import login_required
@@ -203,13 +204,23 @@ def provider(request,pk):
     return render(request,'practice/provider.html',{'provider':therapist,'form':form,'reviews':reviews,'average_rating':reviews.aggregate(value=Avg('rating'))['value'],'review_count':reviews.count()})
 
 
+class VerifiedAuthenticationForm(AuthenticationForm):
+    def confirm_login_allowed(self, user):
+        super().confirm_login_allowed(user)
+        from .email_verification import needs_verification
+        if needs_verification(user):
+            raise forms.ValidationError('Verify your email before signing in.')
+
+
 class PracticeAwareLoginView(LoginView):
+    authentication_form = VerifiedAuthenticationForm
     template_name='practice/login.html'
     def get_success_url(self):
         return self.get_redirect_url() or reverse('practice-dashboard')
 
 
 class WorkLoginView(LoginView):
+    authentication_form = VerifiedAuthenticationForm
     template_name='work/login.html'
     def get_success_url(self):
         return self.get_redirect_url() or reverse('hearteli-work-index')
@@ -217,11 +228,11 @@ class WorkLoginView(LoginView):
 
 def signup(request):
     from apps.tracking.work_web import OwnerRegistrationForm
-    from django.contrib.auth import login
+    from .email_verification import queue_verification
     if request.user.is_authenticated: return redirect('practice-apply')
     form=OwnerRegistrationForm(request.POST or None)
     if request.method=='POST' and form.is_valid():
-        user=User.objects.create_user(name=form.cleaned_data['name'],email=form.cleaned_data['email'],phone_number=form.cleaned_data['phone_number'],password=form.cleaned_data['password'])
-        login(request,user,backend='django.contrib.auth.backends.ModelBackend')
-        return redirect('practice-apply')
+        user=User.objects.create_user(name=form.cleaned_data['name'],email=form.cleaned_data['email'],phone_number=form.cleaned_data['phone_number'],password=form.cleaned_data['password'],email_verification_required=True)
+        queue_verification(user)
+        return redirect('hearteli-verification-pending')
     return render(request,'practice/signup.html',{'form':form})

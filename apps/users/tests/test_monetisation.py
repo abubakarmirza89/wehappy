@@ -29,6 +29,16 @@ class MonetisationTests(TestCase):
         c.status='paused';c.save()
         data=self.search();self.assertEqual(data['sponsored'],[]);self.assertEqual(len(data['organic']),1)
         self.profile.refresh_from_db();self.assertTrue(self.profile.verified)
+    def test_verified_profile_requires_separate_directory_publication(self):
+        self.profile.directory_published_at = None
+        self.profile.save(update_fields=['directory_published_at'])
+        self.assertTrue(self.profile.verified)
+        self.assertEqual(self.search(), {'sponsored': [], 'organic': []})
+        result = self.api.post(f'/api/users/create-appointment/{self.therapist.pk}/',
+                               {'offering_id': self.option.pk, 'date': '2027-01-01',
+                                'time': '10:00', 'location': 'Online', 'reason': 'Support'})
+        self.assertEqual(result.status_code, 400)
+
     def test_expired_verification_hidden_even_with_active_sponsorship(self):
         self.campaign();self.profile.verification_expires_at=self.now-timedelta(seconds=1);self.profile.save()
         self.assertEqual(self.search(),{'sponsored':[],'organic':[]})
@@ -184,7 +194,9 @@ class MonetisationTests(TestCase):
         sub.period_end=self.now-timedelta(seconds=1);sub.save()
         self.assertEqual(len(self.api.get('/api/tracking/workspace-resources/').data),0)
         self.client.force_login(self.user)
-        self.assertEqual(self.client.get(f'/work/{w.pk}/pages/resources/').status_code,402)
+        response = self.client.get(f'/work/{w.pk}/pages/resources/')
+        self.assertContains(response, 'Subscribe to use workplace resources')
+        self.assertNotContains(response, 'Pilot resource')
         self.assertTrue(User.objects.get(pk=self.user.pk).is_active)
     def test_campaign_attribution_and_expiry_remove_placement(self):
         from apps.users.monetisation import attribute_booking

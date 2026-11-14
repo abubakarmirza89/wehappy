@@ -98,182 +98,86 @@ class _CircleScreenState extends State<CircleScreen> {
 
   Future<void> _inviteByEmail() async {
     final email = TextEditingController();
+    final focus = FocusNode();
     String relationship = 'Friend';
-    String? inviteError;
+    String? inviteError, requestError;
     bool sending = false;
-    bool showSignupInvite = false;
     await showDialog<void>(
       context: context,
-      builder:
-          (dialog) => StatefulBuilder(
-            builder:
-                (dialog, update) => AlertDialog(
-                  title: const Text('Invite by email'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: email,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          labelText: 'Email address',
-                          error: inlineFieldError(inviteError),
-                        ),
-                        onChanged: (_) {
-                          update(() {
-                            inviteError = null;
-                            showSignupInvite = false;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: relationship,
-                        decoration: const InputDecoration(
-                          labelText: 'Relationship',
-                        ),
-                        items:
-                            [
-                                  'Partner',
-                                  'Parent',
-                                  'Family',
-                                  'Friend',
-                                  'Colleague',
-                                  'Other',
-                                ]
-                                .map(
-                                  (value) => DropdownMenuItem(
-                                    value: value,
-                                    child: Text(value),
-                                  ),
-                                )
-                                .toList(),
-                        onChanged:
-                            (value) => update(
-                              () => relationship = value ?? relationship,
-                            ),
-                      ),
-                      if (showSignupInvite) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed:
-                                sending
-                                    ? null
-                                    : () async {
-                                      final recipientEmail = email.text.trim();
-                                      update(() {
-                                        sending = true;
-                                        inviteError = null;
-                                      });
-                                      try {
-                                        await widget.apiClient.post(
-                                          '/api/tracking/hearteli/circle/invite-signup/',
-                                          body: {
-                                            'email': recipientEmail,
-                                            'relationship': relationship,
-                                          },
-                                        );
-                                        if (!dialog.mounted) return;
-                                        Navigator.pop(dialog);
-                                        if (mounted) {
-                                          showCalmMessage(
-                                            context,
-                                            'Signup invitation sent to $recipientEmail.',
-                                          );
-                                        }
-                                      } catch (e) {
-                                        if (dialog.mounted) {
-                                          update(() => inviteError = formRequestError(e, invalid: 'Check the invitation details or ask for a new code.'));
-                                        }
-                                      } finally {
-                                        if (dialog.mounted) {
-                                          update(() => sending = false);
-                                        }
-                                      }
-                                    },
-                            icon: const Icon(Icons.person_add_alt_1),
-                            label: const Text('Invite to Hearteli'),
-                          ),
-                        ),
-                      ],
-                    ],
+      barrierDismissible: false,
+      builder: (dialog) => StatefulBuilder(
+        builder: (dialog, update) => PopScope(
+          canPop: !sending,
+          child: AlertDialog(
+            scrollable: true,
+            title: const Text('Invite by email'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: email,
+                  focusNode: focus,
+                  readOnly: sending,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: 'Email address',
+                    error: inlineFieldError(inviteError),
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: sending ? null : () => Navigator.pop(dialog),
-                      child: const Text('Cancel'),
-                    ),
-                    FilledButton(
-                      onPressed:
-                          sending
-                              ? null
-                              : () async {
-                                final recipientEmail = email.text.trim();
-                                final validation = Validators.email(recipientEmail);
-                                if (validation != null) {
-                                  update(
-                                    () =>
-                                        inviteError =
-                                            validation,
-                                  );
-                                  return;
-                                }
-                                update(() {
-                                  sending = true;
-                                  inviteError = null;
-                                });
-                                try {
-                                  await widget.apiClient.post(
-                                    '/api/tracking/hearteli/circle/',
-                                    body: {
-                                      'recipient_email_input': recipientEmail,
-                                      'relationship': relationship,
-                                    },
-                                  );
-                                  if (!dialog.mounted) return;
-                                  Navigator.pop(dialog);
-                                  await load();
-                                  if (mounted) {
-                                    showCalmMessage(
-                                      context,
-                                      'Email invitation sent.',
-                                    );
-                                  }
-                                } catch (e) {
-                                  if (dialog.mounted) {
-                                    update(() {
-                                      inviteError = formRequestError(e,
-                                          invalid: 'Check your invitation details and try again.',
-                                          missing: 'No Hearteli account was found. You can send a signup invitation.');
-                                      showSignupInvite =
-                                          e is ApiException &&
-                                          e.statusCode == 404;
-                                    });
-                                  }
-                                } finally {
-                                  if (dialog.mounted) {
-                                    update(() => sending = false);
-                                  }
-                                }
-                              },
-                      child:
-                          sending
-                              ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                              : const Text('Send invitation'),
-                    ),
-                  ],
+                  onChanged: (_) => update(() => inviteError = requestError = null),
                 ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: relationship,
+                  decoration: const InputDecoration(labelText: 'Relationship'),
+                  items: ['Partner', 'Parent', 'Family', 'Friend', 'Colleague', 'Other']
+                      .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+                      .toList(),
+                  onChanged: sending ? null : (value) => update(() => relationship = value ?? relationship),
+                ),
+                if (requestError != null)
+                  Semantics(liveRegion: true, child: StatusPanel(message: requestError!)),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: sending ? null : () => Navigator.pop(dialog), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: sending ? null : () async {
+                  final address = email.text.trim();
+                  final validation = Validators.email(address);
+                  if (validation != null) {
+                    update(() => inviteError = validation);
+                    focusInvalidField(focus);
+                    return;
+                  }
+                  update(() { sending = true; inviteError = requestError = null; });
+                  try {
+                    final response = await widget.apiClient.post(
+                      '/api/tracking/hearteli/circle/invite-signup/',
+                      body: {'email': address, 'relationship': relationship},
+                    );
+                    if (dialog.mounted) Navigator.pop(dialog);
+                    if (mounted) showCalmMessage(context,
+                      response is Map && response['message'] == 'An invitation was already sent recently.'
+                          ? 'An invitation was already sent recently.'
+                          : 'Invitation sent. They can accept from their email.');
+                  } catch (e) {
+                    if (dialog.mounted) {
+                      update(() => requestError = formRequestError(e,
+                        invalid: 'This invitation could not be sent. Check the email or try again later.'));
+                    }
+                  } finally {
+                    if (dialog.mounted) update(() => sending = false);
+                  }
+                },
+                child: Text(sending ? 'Sending…' : 'Send invitation'),
+              ),
+            ],
           ),
+        ),
+      ),
     );
     email.dispose();
+    focus.dispose();
   }
 
   Future<void> _createCircleInvite() async {

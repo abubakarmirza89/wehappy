@@ -7,10 +7,11 @@ import '../config/app_config.dart';
 import '../session/session_store.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, this.statusCode);
+  const ApiException(this.message, this.statusCode, {this.code});
 
   final String message;
   final int statusCode;
+  final String? code;
 
   @override
   String toString() => message;
@@ -100,7 +101,8 @@ class ApiClient {
       final message = data is Map<String, dynamic>
           ? (data['detail'] ?? data['error'] ?? data.values.firstOrNull ?? 'Request failed')
           : 'Request failed';
-      throw ApiException('$message', response.statusCode);
+      final code = data is Map ? data['code'] : null;
+      throw ApiException('$message', response.statusCode, code: code is String ? code : null);
     }
     return data;
   }

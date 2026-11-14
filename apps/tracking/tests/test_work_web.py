@@ -46,13 +46,22 @@ class WorkConsoleTests(TestCase):
         self.assertContains(response, 'Overview')
         self.assertNotContains(response, 'Invite a member')
 
+    def verify_and_login(self, email, password='StrongerPass123!'):
+        from apps.users.email_verification import email_token
+        user = get_user_model().objects.get(email=email)
+        self.assertEqual(self.client.post('/work/login/', {'username': email, 'password': password}).status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertContains(self.client.post(f'/verify-email/{user.pk}/{email_token.make_token(user)}/'), 'Email confirmed')
+        self.assertRedirects(self.client.post('/work/login/', {'username': email, 'password': password}), '/work/')
+
     def test_new_owner_can_register_and_create_workplace(self):
         self.assertContains(self.client.get('/work/register/'), 'Create a therapist account and apply')
         response = self.client.post('/work/register/', {
             'name': 'New Owner', 'email': 'new-owner@hearteli.test',
             'phone_number': '+923001234563', 'password': 'StrongerPass123!',
             'confirm_password': 'StrongerPass123!'})
-        self.assertRedirects(response, '/work/')
+        self.assertRedirects(response, '/verification-pending/')
+        self.verify_and_login('new-owner@hearteli.test')
         response = self.client.post('/work/new/', {'name': 'New Team'})
         self.assertEqual(response.status_code, 302)
         workspace = Workspace.objects.get(name='New Team')
@@ -104,7 +113,8 @@ class WorkConsoleTests(TestCase):
             'confirm_password': 'StrongerPass123!',
         })
 
-        self.assertRedirects(response, '/work/')
+        self.assertRedirects(response, '/verification-pending/')
+        self.verify_and_login('new-member@hearteli.test')
         member = get_user_model().objects.get(email='new-member@hearteli.test')
         membership = WorkspaceMembership.objects.get(workspace=self.workspace, user=member)
         self.assertEqual(membership.status, WorkspaceMembership.STATUS_PENDING)

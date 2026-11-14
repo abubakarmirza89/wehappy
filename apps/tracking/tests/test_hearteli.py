@@ -194,7 +194,7 @@ class HearteliConsentTests(APITestCase):
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
         HEARTELI_PUBLIC_URL='https://hearteli.example',
     )
-    def test_non_member_signup_invite_emails_inviter_and_creates_pending_circle_on_signup(self):
+    def test_non_member_signup_invite_requires_explicit_acceptance(self):
         unknown_member = self.client.post(
             '/api/tracking/hearteli/circle/',
             {'recipient_email_input': 'new-person@example.com'},
@@ -224,39 +224,41 @@ class HearteliConsentTests(APITestCase):
             password='strongpassword',
             phone_number='789',
         )
-        invitation.refresh_from_db()
-        connection = CircleConnection.objects.get(
-            owner=self.sender,
-            recipient=new_member,
-        )
+        from django.test import Client
+        from apps.tracking.circle_invitation_web import invitation_path
+        path = invitation_path(invitation)
+        browser = Client()
+        self.assertContains(browser.get(path), 'Create a Hearteli account')
+        self.assertFalse(CircleConnection.objects.filter(recipient=new_member).exists())
+        browser.force_login(self.other)
+        self.assertContains(browser.post(path, {'decision': 'accept'}), 'matching the invited email')
+        browser.force_login(new_member)
+        self.assertContains(browser.get(path), 'Accept invitation')
+        self.assertFalse(CircleConnection.objects.filter(recipient=new_member).exists())
+        self.assertContains(browser.post(path, {'decision': 'accept'}), 'Invitation accepted')
+        connection = CircleConnection.objects.get(owner=self.sender, recipient=new_member)
         self.assertEqual(connection.relationship, 'Friend')
-        self.assertIsNone(connection.accepted_at)
+        self.assertIsNotNone(connection.accepted_at)
         self.assertFalse(connection.may_receive_nudges)
-        self.assertIsNotNone(invitation.claimed_at)
+        self.assertContains(browser.post(path, {'decision': 'accept'}), 'already used')
 
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
-    def test_signup_invite_rejects_existing_members_and_recent_resends(self):
+    def test_existing_member_invite_retries_and_decline(self):
+        from django.test import Client
+        from apps.tracking.circle_invitation_web import invitation_path
         url = '/api/tracking/hearteli/circle/invite-signup/'
-        existing = self.client.post(
-            url,
-            {'email': self.recipient.email},
-            format='json',
-        )
-        self.assertEqual(existing.status_code, 400)
-        self.assertFalse(CircleSignupInvitation.objects.exists())
-
-        first = self.client.post(
-            url,
-            {'email': 'new-person@example.com'},
-            format='json',
-        )
-        self.assertEqual(first.status_code, 201)
-        resend = self.client.post(
-            url,
-            {'email': 'new-person@example.com'},
-            format='json',
-        )
-        self.assertEqual(resend.status_code, 400)
+        for expected in (201, 200):
+            result = self.client.post(url, {'email': self.recipient.email}, format='json')
+            self.assertEqual(result.status_code, expected)
+        self.assertEqual(len(mail.outbox), 1)
+        invitation = CircleSignupInvitation.objects.get(email=self.recipient.email)
+        browser = Client()
+        browser.force_login(self.recipient)
+        path = invitation_path(invitation)
+        self.assertContains(browser.post(path, {'decision': 'decline'}), 'Invitation declined')
+        self.assertContains(browser.post(path, {'decision': 'accept'}), 'already used')
+        self.assertFalse(CircleConnection.objects.filter(recipient=self.recipient).exists())
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_nudge_requires_recipient_acceptance_and_respects_revoke(self):
         connection = CircleConnection.objects.create(owner=self.sender, recipient=self.recipient)

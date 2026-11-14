@@ -47,7 +47,7 @@ class _SignupScreenState extends State<SignupScreen> {
         phone: _phone.text.trim(),
       );
       if (mounted) {
-        AppToast.success(context, 'Account created. Please sign in.');
+        AppToast.success(context, 'Account created. Check your email to verify before signing in.');
         Navigator.pop(context);
       }
     } catch (error) {

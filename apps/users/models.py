@@ -17,6 +17,8 @@ from apps.users.managers import UserManager
 
 
 class User(AbstractUser):
+    email_verification_required = models.BooleanField(default=False, editable=False)
+    email_verified_at = models.DateTimeField(null=True, blank=True, editable=False)
     name = models.CharField(_("Name of User"), max_length=255, unique=True)
     email = models.EmailField(_("email address"), unique=True)
     phone_number = models.CharField(max_length=20)
@@ -48,6 +50,7 @@ class User(AbstractUser):
     
 
 class Therapist(models.Model):
+    directory_published_at = models.DateTimeField(null=True, blank=True, editable=False)
     directory_market = models.CharField(max_length=2, blank=True, default='', choices=[(k, v[0]) for k, v in MARKETS.items()])
     practitioner_type=models.CharField(max_length=100,default='Therapist')
     registration_number=models.CharField(max_length=120,blank=True)
@@ -78,7 +81,7 @@ class Therapist(models.Model):
     def activity_status(self):return 'inactive' if (timezone.now()-self.last_activity_confirmation).days>=MarketplacePolicy.current().inactive_days else self.availability_status
     @property
     def searchable(self):
-        return self.user.is_active and self.user.is_therapist and self.verified and self.is_available and self.availability_status=='active' and (timezone.now()-self.last_activity_confirmation).days<MarketplacePolicy.current().inactive_days
+        return self.user.is_active and self.user.is_therapist and self.verified and self.directory_published_at is not None and self.is_available and self.availability_status=='active' and (timezone.now()-self.last_activity_confirmation).days<MarketplacePolicy.current().inactive_days
 
     user = models.OneToOneField(User, related_name="therapist_profile", on_delete=models.CASCADE)
     degrees = models.TextField(null=True, blank=True)

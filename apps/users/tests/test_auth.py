@@ -33,6 +33,25 @@ class AuthAPITests(APITestCase):
         self.assertTrue(User.objects.filter(email=self.user_data["email"]).exists())
         self.assertEqual(response.data["message"], "Signup successful.")
 
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_signup_requires_email_verification_before_login(self):
+        from apps.users.email_verification import email_token
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.client.post(self.signup_url, self.user_data, format='json').status_code, 200)
+        user = User.objects.get(email=self.user_data['email'])
+        credentials = {field: self.user_data[field] for field in ('email', 'password')}
+        denied = self.client.post(self.login_url, credentials, format='json')
+        self.assertEqual(denied.data['code'], 'email_verification_pending')
+        self.assertEqual(self.client.post('/auth-token/', {'username': user.email, 'password': credentials['password']}).status_code, 403)
+        self.assertIn('Confirm your email for Hearteli', [message.subject for message in mail.outbox])
+        path = f'/verify-email/{user.pk}/{email_token.make_token(user)}/'
+        self.assertEqual(self.client.get(path).status_code, 200)
+        user.refresh_from_db()
+        self.assertIsNone(user.email_verified_at)
+        self.assertEqual(self.client.post(path).status_code, 200)
+        self.assertEqual(self.client.post(path).status_code, 400)
+        self.assertEqual(self.client.post(self.login_url, credentials, format='json').status_code, 200)
+
     def test_signup_duplicate_email_is_rejected(self):
         User.objects.create_user(
             name="Existing User",

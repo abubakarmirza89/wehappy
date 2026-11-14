@@ -33,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
   late final AuthRepository _auth;
   bool _busy = false;
   String? _error;
+  bool _verificationPending = false;
 
   @override
   void initState() {
@@ -52,6 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _verificationPending = false;
     });
     try {
       await _auth.login(email: _email.text.trim(), password: _password.text);
@@ -66,7 +68,29 @@ class _LoginScreenState extends State<LoginScreen> {
         (_) => false,
       );
     } catch (error) {
-      if (mounted) setState(() => _error = formRequestError(error, invalid: 'The email or password did not match. Check both and try again.'));
+      if (mounted) setState(() {
+        _verificationPending = error is ApiException && error.code == 'email_verification_pending';
+        _error = _verificationPending
+            ? 'Verify your email before signing in. Check your inbox or resend the link.'
+            : formRequestError(error, invalid: 'The email or password did not match. Check both and try again.');
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resendVerification() async {
+    if (_busy) return;
+    if (Validators.email(_email.text) != null) {
+      setState(() => _error = 'Enter your account email address first.');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.apiClient.post('/api/resend-verification/', body: {'email': _email.text.trim()});
+      if (mounted) setState(() => _error = 'If verification is pending, a new link will be sent.');
+    } catch (e) {
+      if (mounted) setState(() => _error = formRequestError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -134,6 +158,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                     const SizedBox(height: 22),
                     AppButton(label: 'Sign in', onPressed: _login, busy: _busy),
+                    TextButton(
+                      onPressed: _busy ? null : _resendVerification,
+                      child: const Text('Resend verification email'),
+                    ),
                     TextButton(
                       onPressed: () => _forgotPassword(context),
                       child: const Text('Forgot password?'),

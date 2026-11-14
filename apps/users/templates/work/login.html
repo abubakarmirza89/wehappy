@@ -12,7 +12,7 @@
     <span class="eyebrow">Welcome back</span>
     <h2>Sign in to your workspace</h2>
     <p class="muted">Use your business account to manage your Hearteli workspace.</p>
-    {% if form.errors %}<p class="error" role="alert">Check your email and password.</p>{% endif %}
+    {% if form.errors %}<p class="error" role="alert">{{ form.non_field_errors|striptags|default:"Check your email and password." }}</p>{% endif %}
     <form method="post">
       {% csrf_token %}
       <label for="id_username">Email address</label>

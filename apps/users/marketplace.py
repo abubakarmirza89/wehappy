@@ -13,6 +13,7 @@ def eligible_profiles():
     p=MarketplacePolicy.current();now=timezone.now()
     return Therapist.objects.filter(user__is_active=True,user__is_therapist=True,
         verification_status='verified',verification_expires_at__gt=now,is_available=True,
+        directory_published_at__isnull=False,
         availability_status='active',last_activity_confirmation__gt=now-timezone.timedelta(days=p.inactive_days))
 
 

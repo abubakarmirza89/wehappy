@@ -109,6 +109,11 @@ class UserSerializer(serializers.ModelSerializer):
         filtered_data = {key: value for key, value in data.items() if key not in fields_to_exclude}
         return filtered_data
 
+    def validate_email(self, value):
+        if self.instance and value.casefold() != self.instance.email.casefold():
+            raise serializers.ValidationError('Contact Hearteli support to change your account email.')
+        return value
+
     def update(self, instance, validated_data):
         therapist_profile_data = validated_data.pop("therapist_profile", None)
         instance = super().update(instance, validated_data)

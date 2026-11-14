@@ -13,8 +13,8 @@ from .therapy_services import balance
 class ApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = TherapistApplication
-        fields = ['bio','credentials','license_number','location','modalities','status','review_note']
-        read_only_fields = ['status','review_note']
+        fields = ['bio','credentials','license_number','location','modalities','status','review_note','updated_at']
+        read_only_fields = ['status','review_note','updated_at']
         extra_kwargs = {f:{'allow_blank':False} for f in ['bio','credentials','license_number','location','modalities']}
 
 

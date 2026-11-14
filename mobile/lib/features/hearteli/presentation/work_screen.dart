@@ -50,6 +50,11 @@ class _WorkScreenState extends State<WorkScreen> {
     }
   }
 
+  void inviteHelp() => showDialog<void>(
+    context: context,
+    builder: (_) => const _WorkInviteHelp(),
+  );
+
   Future<void> join() async {
     final joined = await showDialog<bool>(
       context: context,
@@ -111,6 +116,10 @@ class _WorkScreenState extends State<WorkScreen> {
             OutlinedButton(
               onPressed: join,
               child: const Text('Join with invite code'),
+            ),
+            TextButton(
+              onPressed: inviteHelp,
+              child: const Text('How do I get a code?'),
             ),
           ],
         ),
@@ -397,9 +406,14 @@ class _WorkInviteDialogState extends State<_WorkInviteDialog> {
       final invalid = e is ApiException && {400, 404, 410, 422}.contains(e.statusCode);
       setState(() {
         if (invalid) {
-          fieldError = formRequestError(e,
+          fieldError = switch ((e as ApiException).code) {
+            'invite_expired' => 'This code expired. Ask your workplace administrator for a new one.',
+            'invite_revoked' => 'This code was revoked. Ask your workplace administrator for a new one.',
+            'workplace_unavailable' => 'This workplace cannot accept invitations right now. Contact your workplace administrator.',
+            _ => formRequestError(e,
             invalid: 'This invitation could not be used. Check it or ask for a new code.',
-            missing: 'This code was not recognised or is no longer valid. Check it or ask for a new code.');
+            missing: 'This code was not recognised. Check it or ask for a new code.'),
+          };
         } else {
           requestError = formRequestError(e);
         }
@@ -426,6 +440,11 @@ class _WorkInviteDialogState extends State<_WorkInviteDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          const Text('Ask your workplace administrator for an invite code. Joining does not share your private check-ins.'),
+          TextButton(
+            onPressed: busy ? null : () => showDialog<void>(context: context, builder: (_) => const _WorkInviteHelp()),
+            child: const Text('How do I get a code?'),
+          ),
           TextField(
             controller: code,
             focusNode: focus,
@@ -447,5 +466,24 @@ class _WorkInviteDialogState extends State<_WorkInviteDialog> {
         FilledButton(onPressed: busy ? null : submit, child: Text(busy ? 'Checking…' : 'Join')),
       ],
     ),
+  );
+}
+
+
+class _WorkInviteHelp extends StatelessWidget {
+  const _WorkInviteHelp();
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text('How do I get a code?'),
+    content: const Text(
+      'Ask your workplace administrator to share a current Hearteli invitation. '
+      'If a code is missing, expired or no longer works, ask them to issue a new one. '
+      'Joining a workplace does not share your private check-ins.',
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+    ],
   );
 }

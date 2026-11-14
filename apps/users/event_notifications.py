@@ -26,6 +26,7 @@ def claim_circle_signup_invitations(user):
     with transaction.atomic():
         invitations = CircleSignupInvitation.objects.select_for_update().filter(
             email__iexact=user.email,
+            requires_link=False,
             last_sent_at__isnull=False,
             claimed_at__isnull=True,
             expires_at__gt=now,

@@ -378,6 +378,7 @@ class CircleInviteCode(models.Model):
 
 
 class CircleSignupInvitation(models.Model):
+    requires_link = models.BooleanField(default=False)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_circle_signup_invitations')
     email = models.EmailField()
     relationship = models.CharField(max_length=40, default='Friend')

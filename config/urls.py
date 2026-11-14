@@ -1,3 +1,5 @@
+from apps.tracking.circle_invitation_web import review_invitation
+from apps.users import email_verification
 from apps.users import commercial_reports
 
 from django.contrib import admin
@@ -10,7 +12,6 @@ from apps.users import notification_web
 from apps.users.notification_test_web import notification_test
 from apps.users.email_test_web import email_test
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from rest_framework.authtoken.views import obtain_auth_token
 from django.conf import settings
 from apps.users.views import (
     ForgotPasswordView,
@@ -23,6 +24,10 @@ from apps.users.views import (
 )
 
 urlpatterns = [
+    path('circle/invite/<str:token>/', review_invitation, name='hearteli-circle-email-invite'),
+    path('verify-email/<int:pk>/<str:token>/', email_verification.verify_email, name='verify-hearteli-email'),
+    path('verification-pending/', email_verification.verification_pending, name='hearteli-verification-pending'),
+    path('api/resend-verification/', email_verification.ResendVerificationView.as_view(), name='hearteli-resend-verification'),
     path('marketplace/preview/',marketplace_web.preview,name='marketplace-preview'),
     path('commercial/reports/sponsors/',commercial_reports.sponsors,name='commercial-sponsor-report'),
     path('commercial/reports/organisations/',commercial_reports.organisations,name='commercial-organisation-report'),
@@ -80,7 +85,7 @@ urlpatterns = [
     path('work/<int:pk>/resources/', work_web.add_resource, name='hearteli-work-resource-add'),
     path('work/<int:pk>/resources/<int:resource_id>/remove/', work_web.remove_resource, name='hearteli-work-resource-remove'),
 
-    path("auth-token/", obtain_auth_token),
+    path("auth-token/", email_verification.VerifiedObtainAuthToken.as_view()),
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="api-schema"), name="api-docs")
 ]

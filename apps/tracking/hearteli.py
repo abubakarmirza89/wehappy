@@ -26,7 +26,7 @@ from .data_export import ExportThrottle
 CIRCLE_INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 CIRCLE_INVITE_LENGTH = 20
 CIRCLE_INVITE_LIFETIME = timedelta(minutes=10)
-CIRCLE_SIGNUP_INVITE_LIFETIME = timedelta(days=30)
+CIRCLE_SIGNUP_INVITE_LIFETIME = timedelta(days=7)
 CIRCLE_SIGNUP_INVITE_COOLDOWN = timedelta(hours=24)
 CIRCLE_SIGNUP_INVITE_DAILY_LIMIT = 10
 
@@ -127,8 +127,6 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         relationship = relationship.strip()
         if email.casefold() == request.user.email.casefold():
             raise ValidationError({'email': 'You cannot invite yourself.'})
-        if User.objects.filter(email__iexact=email).exists():
-            raise ValidationError({'email': 'This person already has a Hearteli account. Send a Circle invitation instead.'})
 
         now = timezone.now()
         with transaction.atomic():
@@ -143,7 +141,7 @@ class ConnectionViewSet(viewsets.ModelViewSet):
             if invitation.claimed_at is not None:
                 raise ValidationError({'email': 'This invitation has already been accepted by an account.'})
             if invitation.last_sent_at and invitation.last_sent_at > now - CIRCLE_SIGNUP_INVITE_COOLDOWN:
-                raise ValidationError({'email': 'An invitation was sent to this address recently. Try again tomorrow.'})
+                return Response({'message': 'An invitation was already sent recently.'})
             sent_today = CircleSignupInvitation.objects.filter(
                 owner=request.user,
                 last_sent_at__gte=now - CIRCLE_SIGNUP_INVITE_COOLDOWN,
@@ -153,12 +151,14 @@ class ConnectionViewSet(viewsets.ModelViewSet):
 
             invitation.relationship = relationship
             invitation.expires_at = now + CIRCLE_SIGNUP_INVITE_LIFETIME
+            invitation.requires_link = True
+            invitation.last_sent_at = now
             try:
                 send_circle_signup_invitation(invitation)
             except (OSError, SMTPException, RuntimeError) as exc:
                 raise CircleSignupInviteDeliveryError() from exc
             invitation.last_sent_at = now
-            invitation.save(update_fields=['relationship', 'expires_at', 'last_sent_at'])
+            invitation.save(update_fields=['relationship', 'expires_at', 'last_sent_at', 'requires_link'])
 
         return Response({'message': 'Signup invitation sent.'}, status=status.HTTP_201_CREATED)
 
