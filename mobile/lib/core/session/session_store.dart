@@ -42,10 +42,18 @@ class SessionStore {
   String? get userName => _preferences.getString(_userNameKey);
   bool get isTherapist => _preferences.getBool(_therapistKey) ?? false;
   bool get isAuthenticated => _token?.isNotEmpty == true;
+  bool get deviceNotificationsEnabled =>
+      _preferences.getBool('hearteli_push_enabled_${userId ?? ''}') ?? true;
   bool get hasCompletedSetup =>
       _preferences.getBool('hearteli_setup_${userId ?? ''}') ?? false;
   Future<void> completeSetup() async =>
       _preferences.setBool('hearteli_setup_${userId ?? ''}', true);
+  Future<void> setDeviceNotificationsEnabled(bool enabled) async {
+    await _preferences.setBool(
+      'hearteli_push_enabled_${userId ?? ''}',
+      enabled,
+    );
+  }
 
   Future<void> save({
     required String token,

@@ -30,10 +30,12 @@ class FirebaseService {
 
   Future<bool> initialize({
     bool requestPermission = true,
+    bool registerDevice = true,
     void Function(int)? onNudge,
     void Function(String, String)? onForegroundNotification,
   }) async {
     try {
+      _deviceRegistrationEnabled = registerDevice;
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp();
       }
@@ -41,13 +43,14 @@ class FirebaseService {
       if (onForegroundNotification != null) {
         _onForegroundNotification = onForegroundNotification;
       }
-      final permission = requestPermission
-          ? await FirebaseMessaging.instance.requestPermission(
-              alert: true,
-              badge: true,
-              sound: true,
-            )
-          : await FirebaseMessaging.instance.getNotificationSettings();
+      final permission =
+          requestPermission
+              ? await FirebaseMessaging.instance.requestPermission(
+                alert: true,
+                badge: true,
+                sound: true,
+              )
+              : await FirebaseMessaging.instance.getNotificationSettings();
       final permissionGranted =
           permission.authorizationStatus == AuthorizationStatus.authorized ||
           permission.authorizationStatus == AuthorizationStatus.provisional;
@@ -58,11 +61,9 @@ class FirebaseService {
           await registerToken(token);
           registered = true;
         }
-      } else {
+      } else if (!registerDevice || !permissionGranted) {
         await unregisterCurrentToken();
       }
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.isNotEmpty) await registerToken(token);
       await _tokens?.cancel();
       _tokens = FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
         try {
@@ -92,9 +93,8 @@ class FirebaseService {
       });
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) openMessage(initial);
-      _pushRegistration.value = registerDevice && permissionGranted
-          ? registered
-          : null;
+      _pushRegistration.value =
+          registerDevice && permissionGranted ? registered : null;
       return registered;
     } catch (error, stackTrace) {
       _pushRegistration.value = registerDevice ? false : null;
@@ -161,8 +161,8 @@ class FirebaseService {
       if (enabled != null) return enabled;
     }
     if (Firebase.apps.isEmpty) await Firebase.initializeApp();
-    final permission = await FirebaseMessaging.instance
-        .getNotificationSettings();
+    final permission =
+        await FirebaseMessaging.instance.getNotificationSettings();
     return permission.authorizationStatus == AuthorizationStatus.authorized ||
         permission.authorizationStatus == AuthorizationStatus.provisional;
   }

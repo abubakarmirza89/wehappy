@@ -45,6 +45,8 @@ class _AppShellState extends State<AppShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       FirebaseService(widget.apiClient).initialize(
+        requestPermission: widget.sessionStore.deviceNotificationsEnabled,
+        registerDevice: widget.sessionStore.deviceNotificationsEnabled,
         onForegroundNotification: (title, body) {
           if (!mounted) return;
           ScaffoldMessenger.of(context)
@@ -62,11 +64,12 @@ class _AppShellState extends State<AppShell> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => NudgeDetail(
-                    apiClient: widget.apiClient,
-                    sessionStore: widget.sessionStore,
-                    id: id,
-                  ),
+                  builder:
+                      (_) => NudgeDetail(
+                        apiClient: widget.apiClient,
+                        sessionStore: widget.sessionStore,
+                        id: id,
+                      ),
                 ),
               );
           });
@@ -92,16 +95,18 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     if (widget.sessionStore.isTherapist && !widget.personalOnly)
       return PracticeShell(
-        onPersonal: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AppShell(
-              apiClient: widget.apiClient,
-              sessionStore: widget.sessionStore,
-              personalOnly: true,
+        onPersonal:
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (_) => AppShell(
+                      apiClient: widget.apiClient,
+                      sessionStore: widget.sessionStore,
+                      personalOnly: true,
+                    ),
+              ),
             ),
-          ),
-        ),
         apiClient: widget.apiClient,
         sessionStore: widget.sessionStore,
       );
@@ -169,24 +174,23 @@ class _AppShellState extends State<AppShell> {
                 index = value ? 3 : 0;
               });
             },
-            itemBuilder: (_) => [
-              CheckedPopupMenuItem(
-                value: false,
-                checked: !workContext,
-                child: const Text('Personal'),
-              ),
-              CheckedPopupMenuItem(
-                value: true,
-                checked: workContext,
-                child: const Text('For Work'),
-              ),
-            ],
+            itemBuilder:
+                (_) => [
+                  CheckedPopupMenuItem(
+                    value: false,
+                    checked: !workContext,
+                    child: const Text('Personal'),
+                  ),
+                  CheckedPopupMenuItem(
+                    value: true,
+                    checked: workContext,
+                    child: const Text('For Work'),
+                  ),
+                ],
           ),
         ],
       ),
-      body: SafeArea(
-        child: IndexedStack(index: index, children: pages),
-      ),
+      body: SafeArea(child: IndexedStack(index: index, children: pages)),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) => setState(() => index = i),
@@ -329,15 +333,17 @@ class _HomeScreenState extends State<HomeScreen> {
               _QuickAction(
                 icon: Icons.inbox_outlined,
                 label: 'Updates',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SupportInboxScreen(
-                      apiClient: widget.apiClient,
-                      sessionStore: widget.sessionStore,
+                onTap:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (_) => SupportInboxScreen(
+                              apiClient: widget.apiClient,
+                              sessionStore: widget.sessionStore,
+                            ),
+                      ),
                     ),
-                  ),
-                ),
               ),
               _QuickAction(
                 icon: Icons.send_outlined,
@@ -349,10 +355,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       settings: const RouteSettings(
                         name: '/nudge/choose-recipient',
                       ),
-                      builder: (_) => NudgeComposeScreen(
-                        apiClient: widget.apiClient,
-                        sessionStore: widget.sessionStore,
-                      ),
+                      builder:
+                          (_) => NudgeComposeScreen(
+                            apiClient: widget.apiClient,
+                            sessionStore: widget.sessionStore,
+                          ),
                     ),
                   );
                   if (sent == true && mounted) load();
@@ -361,28 +368,32 @@ class _HomeScreenState extends State<HomeScreen> {
               _QuickAction(
                 icon: Icons.calendar_today_outlined,
                 label: 'Book',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => TherapyScreen(apiClient: widget.apiClient),
-                  ),
-                ),
+                onTap:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (_) => TherapyScreen(apiClient: widget.apiClient),
+                      ),
+                    ),
               ),
               _QuickAction(
                 icon: Icons.bar_chart_outlined,
                 label: 'Insights',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => Scaffold(
-                      appBar: AppBar(title: const Text('Insights')),
-                      body: InsightsScreen(
-                        apiClient: widget.apiClient,
-                        sessionStore: widget.sessionStore,
+                onTap:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (_) => Scaffold(
+                              appBar: AppBar(title: const Text('Insights')),
+                              body: InsightsScreen(
+                                apiClient: widget.apiClient,
+                                sessionStore: widget.sessionStore,
+                              ),
+                            ),
                       ),
                     ),
-                  ),
-                ),
               ),
             ],
           ),
@@ -405,15 +416,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.send_outlined,
                   title: 'Empathy Nudges',
                   subtitle: 'See support sent and received',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SupportInboxScreen(
-                        apiClient: widget.apiClient,
-                        sessionStore: widget.sessionStore,
+                  onTap:
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (_) => SupportInboxScreen(
+                                apiClient: widget.apiClient,
+                                sessionStore: widget.sessionStore,
+                              ),
+                        ),
                       ),
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -437,16 +450,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => NudgeDetail(
-                          apiClient: widget.apiClient,
-                          sessionStore: widget.sessionStore,
-                          id: nudges.first['id'] as int,
+                    onPressed:
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (_) => NudgeDetail(
+                                  apiClient: widget.apiClient,
+                                  sessionStore: widget.sessionStore,
+                                  id: nudges.first['id'] as int,
+                                ),
+                          ),
                         ),
-                      ),
-                    ),
                     child: const Text('View update'),
                   ),
                 ],
@@ -526,80 +541,91 @@ class MoreScreen extends StatelessWidget {
             LabelRow(
               icon: Icons.favorite_outline,
               title: 'Support updates',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SupportInboxScreen(
-                    apiClient: apiClient,
-                    sessionStore: sessionStore,
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => SupportInboxScreen(
+                            apiClient: apiClient,
+                            sessionStore: sessionStore,
+                          ),
+                    ),
                   ),
-                ),
-              ),
             ),
             LabelRow(
               icon: Icons.psychology_outlined,
               title: 'Find a therapist',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => TherapyScreen(apiClient: apiClient),
-                ),
-              ),
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TherapyScreen(apiClient: apiClient),
+                    ),
+                  ),
             ),
             LabelRow(
               icon: Icons.calendar_month_outlined,
               title: 'Appointments',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('Appointments')),
-                    body: AppointmentsScreen(apiClient: apiClient),
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => Scaffold(
+                            appBar: AppBar(title: const Text('Appointments')),
+                            body: AppointmentsScreen(apiClient: apiClient),
+                          ),
+                    ),
                   ),
-                ),
-              ),
             ),
             LabelRow(
               icon: Icons.work_outline,
               title: 'For Work',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('For Work')),
-                    body: WorkScreen(
-                      apiClient: apiClient,
-                      sessionStore: sessionStore,
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => Scaffold(
+                            appBar: AppBar(title: const Text('For Work')),
+                            body: WorkScreen(
+                              apiClient: apiClient,
+                              sessionStore: sessionStore,
+                            ),
+                          ),
                     ),
                   ),
-                ),
-              ),
             ),
             LabelRow(
               icon: Icons.health_and_safety_outlined,
               title: 'Immediate support',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SafetyScreen(
-                    apiClient: apiClient,
-                    sessionStore: sessionStore,
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => SafetyScreen(
+                            apiClient: apiClient,
+                            sessionStore: sessionStore,
+                          ),
+                    ),
                   ),
-                ),
-              ),
             ),
             LabelRow(
               icon: Icons.settings_outlined,
               title: 'Settings',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SettingsScreen(
-                    apiClient: apiClient,
-                    sessionStore: sessionStore,
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => SettingsScreen(
+                            apiClient: apiClient,
+                            sessionStore: sessionStore,
+                          ),
+                    ),
                   ),
-                ),
-              ),
             ),
           ],
         ),
