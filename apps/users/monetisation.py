@@ -111,7 +111,12 @@ class RedeemOrganisationInvite(APIView):
             workspace=Workspace.objects.select_for_update().get(pk=invitation.workspace_id)
             now=timezone.now()
             sub=BusinessSubscription.objects.filter(workspace=workspace).select_related('plan').first()
-            if invitation.revoked_at or invitation.expires_at<=now or not sub or not sub.entitled:raise ValidationError('Invitation or organisation access is expired or unavailable.')
+            if invitation.revoked_at:
+                raise ValidationError({'code': 'invite_revoked', 'detail': 'This workplace invitation was revoked.'})
+            if invitation.expires_at <= now:
+                raise ValidationError({'code': 'invite_expired', 'detail': 'This workplace invitation expired.'})
+            if not sub or not sub.entitled:
+                raise ValidationError({'code': 'workplace_unavailable', 'detail': 'This workplace cannot accept invitations right now.'})
             prior=WorkspaceMembership.objects.filter(workspace=workspace,user=request.user).first()
             if prior:return Response({'workspace_id':workspace.pk,'status':prior.status,'already_joined':True})
             if invitation.redemptions.count()>=invitation.max_redemptions or workspace.memberships.exclude(status='rejected').exclude(user_id=workspace.owner_id).count()>=sub.plan.member_limit:raise ValidationError('Invitation capacity reached.')

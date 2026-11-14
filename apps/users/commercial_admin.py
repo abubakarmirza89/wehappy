@@ -120,16 +120,55 @@ class ModeratedReviewAdmin(AuditedAdmin):
 admin.site.unregister(Therapist)
 @admin.register(Therapist)
 class VerificationAdmin(AuditedAdmin):
-    list_display=['user','verification_status','verification_expires_at','availability_status','last_activity_confirmation','activity_status','last_login']
-    readonly_fields=['verified_by','verified_at','last_activity_confirmation','last_availability_update','referral_code','last_login']
-    def last_login(self,obj):return obj.user.last_login
-    def save_model(self,request,obj,form,change):
-        if obj.verification_status=='verified':
-            obj.verified_by=request.user;obj.verified_at=timezone.now()
-            if not obj.verification_expires_at or obj.verification_expires_at<=timezone.now():
-                from django.core.exceptions import ValidationError
-                raise ValidationError('Set a future verification expiry before granting verification.')
-        super().save_model(request,obj,form,change)
+    list_display = ['user', 'verification_status', 'verification_expires_at',
+                    'directory_published_at', 'availability_status', 'last_activity_confirmation',
+                    'activity_status', 'last_login']
+    readonly_fields = ['verified_by', 'verified_at', 'directory_published_at',
+                       'last_activity_confirmation', 'last_availability_update', 'referral_code', 'last_login']
+    actions = ['publish_directory', 'unpublish_directory']
+
+    def last_login(self, obj):
+        return obj.user.last_login
+
+    def save_model(self, request, obj, form, change):
+        credential_fields = {
+            'verification_status', 'verification_expires_at', 'verification_evidence',
+            'registration_body', 'registration_number', 'practitioner_type',
+        }
+        if credential_fields.intersection(form.changed_data):
+            obj.directory_published_at = None
+        if obj.verification_status == 'verified' and (
+            not obj.verified_at or credential_fields.intersection(form.changed_data)
+        ):
+            obj.verified_by = request.user
+            obj.verified_at = timezone.now()
+        super().save_model(request, obj, form, change)
+
+    @admin.action(permissions=['change'], description='Publish selected reviewed profiles to the directory')
+    def publish_directory(self, request, queryset):
+        from django.db import transaction
+        with transaction.atomic():
+            for obj in queryset.select_for_update().select_related('user'):
+                if not obj.verified or not obj.user.is_active or not obj.user.is_therapist:
+                    self.message_user(request, f'{obj.user.name} was not published: active professional verification is required.', messages.ERROR)
+                    continue
+                if obj.directory_published_at is None:
+                    obj.directory_published_at = timezone.now()
+                    obj.save(update_fields=['directory_published_at'])
+                    CommercialAudit.objects.create(actor=request.user, object_type='Therapist',
+                                                   object_id=str(obj.pk), action='directory_published')
+                    self.message_user(request, f'{obj.user.name} is approved for directory publication.')
+
+    @admin.action(permissions=['change'], description='Unpublish selected directory profiles')
+    def unpublish_directory(self, request, queryset):
+        from django.db import transaction
+        with transaction.atomic():
+            for obj in queryset.select_for_update().filter(directory_published_at__isnull=False):
+                obj.directory_published_at = None
+                obj.save(update_fields=['directory_published_at'])
+                CommercialAudit.objects.create(actor=request.user, object_type='Therapist',
+                                               object_id=str(obj.pk), action='directory_unpublished')
+
 
 @admin.register(CommercialAudit)
 class AuditAdmin(admin.ModelAdmin):

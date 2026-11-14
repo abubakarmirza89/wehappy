@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -6,10 +7,11 @@ import '../config/app_config.dart';
 import '../session/session_store.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, this.statusCode);
+  const ApiException(this.message, this.statusCode, {this.code});
 
   final String message;
   final int statusCode;
+  final String? code;
 
   @override
   String toString() => message;
@@ -51,6 +53,25 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<Uint8List> downloadPersonalData(String password) async {
+    final token = _sessionStore.token;
+    final response = await _client.post(
+      _uri('/api/tracking/hearteli/data/export/'),
+      headers: {..._headers, 'Accept': 'application/zip, application/json'},
+      body: jsonEncode({'password': password}),
+    ).timeout(const Duration(seconds: 90));
+    if (token == null || token != _sessionStore.token) {
+      throw const ApiException('Sign in again.', 401);
+    }
+    if (response.statusCode != 200) _decode(response);
+    final bytes = response.bodyBytes;
+    if (response.headers['content-type']?.startsWith('application/zip') != true ||
+        bytes.length < 4 || bytes[0] != 0x50 || bytes[1] != 0x4b) {
+      throw const ApiException('Could not prepare the archive.', 500);
+    }
+    return bytes;
+  }
+
   Future<dynamic> patch(String path, {Map<String, dynamic>? body}) async {
     final response = await _client.patch(
       _uri(path),
@@ -80,7 +101,8 @@ class ApiClient {
       final message = data is Map<String, dynamic>
           ? (data['detail'] ?? data['error'] ?? data.values.firstOrNull ?? 'Request failed')
           : 'Request failed';
-      throw ApiException('$message', response.statusCode);
+      final code = data is Map ? data['code'] : null;
+      throw ApiException('$message', response.statusCode, code: code is String ? code : null);
     }
     return data;
   }

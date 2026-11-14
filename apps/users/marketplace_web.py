@@ -22,12 +22,23 @@ def preview(request):
     t=Therapist.objects.select_related('user').first()
     return render(request,'practice/marketplace_preview.html',{'provider':t,'states':[{'sponsored':True,'verified':True},{'sponsored':True,'verified':False},{'sponsored':False,'verified':True},{'sponsored':False,'verified':False}]})
 
-@permission_required('users.view_therapist',raise_exception=True)
-def credential(request,token):
-    try:name=signing.loads(token,salt='credential-download')
-    except signing.BadSignature:return HttpResponseForbidden()
-    p=get_object_or_404(Therapist,verification_evidence=name)
-    return FileResponse(p.verification_evidence.open('rb'),as_attachment=True,filename='credential-evidence')
+@permission_required('users.change_therapist', raise_exception=True)
+def credential(request, token):
+    if not request.user.is_staff:
+        return HttpResponseForbidden()
+    try:
+        name = signing.loads(token, salt='credential-download', max_age=300)
+    except signing.BadSignature:
+        return HttpResponseForbidden()
+    provider = get_object_or_404(Therapist, verification_evidence=name)
+    from .models import CommercialAudit
+    response = FileResponse(provider.verification_evidence.open('rb'),
+                            as_attachment=True, filename='credential-evidence')
+    CommercialAudit.objects.create(actor=request.user, object_type='Therapist',
+                                   object_id=str(provider.pk), action='credential_download')
+    response['Cache-Control'] = 'private, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 
 @login_required(login_url='/practice/login/')

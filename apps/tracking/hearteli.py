@@ -20,12 +20,13 @@ from .models import (CircleConnection, CircleSignupInvitation, ConsentEvent, Emp
                      SupportOutcome, TherapistContextGrant)
 from apps.users.models import User
 from apps.users.communications import send_circle_signup_invitation
+from .data_export import ExportThrottle
 
 
 CIRCLE_INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 CIRCLE_INVITE_LENGTH = 20
 CIRCLE_INVITE_LIFETIME = timedelta(minutes=10)
-CIRCLE_SIGNUP_INVITE_LIFETIME = timedelta(days=30)
+CIRCLE_SIGNUP_INVITE_LIFETIME = timedelta(days=7)
 CIRCLE_SIGNUP_INVITE_COOLDOWN = timedelta(hours=24)
 CIRCLE_SIGNUP_INVITE_DAILY_LIMIT = 10
 
@@ -85,6 +86,8 @@ class ConnectionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        if self.action == 'list' and self.request.query_params.get('nudge_eligible') == 'true':
+            return nudge_connections(user).select_related('owner', 'recipient')
         return CircleConnection.objects.filter(Q(owner=user) | Q(recipient=user)).select_related('owner', 'recipient')
 
     @action(detail=False, methods=['post'], url_path='invite-code')
@@ -124,8 +127,6 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         relationship = relationship.strip()
         if email.casefold() == request.user.email.casefold():
             raise ValidationError({'email': 'You cannot invite yourself.'})
-        if User.objects.filter(email__iexact=email).exists():
-            raise ValidationError({'email': 'This person already has a Hearteli account. Send a Circle invitation instead.'})
 
         now = timezone.now()
         with transaction.atomic():
@@ -140,7 +141,7 @@ class ConnectionViewSet(viewsets.ModelViewSet):
             if invitation.claimed_at is not None:
                 raise ValidationError({'email': 'This invitation has already been accepted by an account.'})
             if invitation.last_sent_at and invitation.last_sent_at > now - CIRCLE_SIGNUP_INVITE_COOLDOWN:
-                raise ValidationError({'email': 'An invitation was sent to this address recently. Try again tomorrow.'})
+                return Response({'message': 'An invitation was already sent recently.'})
             sent_today = CircleSignupInvitation.objects.filter(
                 owner=request.user,
                 last_sent_at__gte=now - CIRCLE_SIGNUP_INVITE_COOLDOWN,
@@ -150,12 +151,14 @@ class ConnectionViewSet(viewsets.ModelViewSet):
 
             invitation.relationship = relationship
             invitation.expires_at = now + CIRCLE_SIGNUP_INVITE_LIFETIME
+            invitation.requires_link = True
+            invitation.last_sent_at = now
             try:
                 send_circle_signup_invitation(invitation)
             except (OSError, SMTPException, RuntimeError) as exc:
                 raise CircleSignupInviteDeliveryError() from exc
             invitation.last_sent_at = now
-            invitation.save(update_fields=['relationship', 'expires_at', 'last_sent_at'])
+            invitation.save(update_fields=['relationship', 'expires_at', 'last_sent_at', 'requires_link'])
 
         return Response({'message': 'Signup invitation sent.'}, status=status.HTTP_201_CREATED)
 
@@ -291,6 +294,13 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
+def nudge_connections(user):
+    return CircleConnection.objects.filter(
+        owner=user, accepted_at__isnull=False, declined_at__isnull=True,
+        may_receive_nudges=True, recipient__is_active=True,
+    )
+
+
 class NudgeSerializer(serializers.ModelSerializer):
     idempotency_key = serializers.UUIDField(required=True)
     recipient_name = serializers.CharField(source='recipient.name', read_only=True)
@@ -311,11 +321,12 @@ class NudgeSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         user = self.context['request'].user
-        check_in = attrs['check_in']
-        if check_in.user_id != user.id or not (check_in.feeling_category or check_in.moods.exists()):
+        check_in = attrs.get('check_in')
+        if check_in is not None and (
+            check_in.user_id != user.id or not (check_in.feeling_category or check_in.moods.exists())
+        ):
             raise ValidationError({'check_in': 'Choose your completed check-in.'})
-        connection = CircleConnection.objects.filter(owner=user, recipient=attrs['recipient'],
-                          accepted_at__isnull=False, may_receive_nudges=True).first()
+        connection = nudge_connections(user).filter(recipient=attrs['recipient']).first()
         if not connection:
             raise ValidationError({'recipient': 'Recipient must accept and enable nudges.'})
         if attrs.get('support_preference') and not connection.may_receive_preference:
@@ -352,14 +363,18 @@ class NudgeViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             with transaction.atomic():
-                connection = CircleConnection.objects.select_for_update().filter(
-                    owner=request.user, recipient=serializer.validated_data['recipient'],
-                    accepted_at__isnull=False, may_receive_nudges=True).first()
+                connection = nudge_connections(request.user).select_for_update().filter(
+                    recipient=serializer.validated_data['recipient'],
+                ).first()
                 if not connection:
                     raise ValidationError({'recipient': 'Permission changed. Review the recipient again.'})
                 if serializer.validated_data.get('support_preference') and not connection.may_receive_preference:
                     raise ValidationError({'support_preference': 'Permission changed. Review the preview again.'})
-                if EmpathyNudge.objects.filter(sender=request.user, recipient=connection.recipient, check_in=serializer.validated_data['check_in'], status='sent').exists():
+                check_in = serializer.validated_data.get('check_in')
+                if check_in is not None and EmpathyNudge.objects.filter(
+                    sender=request.user, recipient=connection.recipient,
+                    check_in=check_in, status='sent',
+                ).exists():
                     raise ValidationError({'recipient': 'There is already a pending nudge for this check-in. Open that nudge instead.'})
                 nudge = serializer.save(sender=request.user)
                 nudge.refresh_from_db()
@@ -439,7 +454,14 @@ class PreferencesSerializer(serializers.ModelSerializer):
     class Meta:
         model = HearteliPreferences
         fields = ['use_contexts', 'reminder_enabled', 'nudge_notifications', 'quiet_start',
-                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'reminder_time', 'sponsor_opt_in']
+                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'timezone_selected', 'reminder_time', 'sponsor_opt_in', 'directory_market']
+        read_only_fields = ['timezone_selected']
+
+    def validate_directory_market(self, value):
+        from apps.users.directory_money import MARKETS
+        if value and value not in MARKETS:
+            raise ValidationError('Select a listed market.')
+        return value
 
     def validate_timezone_name(self, value):
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -469,7 +491,7 @@ class PreferencesViewSet(viewsets.ViewSet):
         obj, _ = HearteliPreferences.objects.get_or_create(user=request.user)
         serializer = PreferencesSerializer(obj, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        serializer.save(**({"timezone_selected": True} if "timezone_name" in serializer.validated_data else {}))
         return Response(serializer.data)
 
 class TherapyGrantSerializer(serializers.ModelSerializer):
@@ -528,18 +550,21 @@ class TherapyGrantViewSet(viewsets.ModelViewSet):
 class DataControlViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
-    def list(self, request):
-        """An authenticated, member-only copy of personal Hearteli data."""
-        check_ins = list(MoodCheckIn.objects.filter(user=request.user).values(
-            'id', 'date', 'feeling_category', 'notes', 'context_tags', 'support_preferences'))
-        nudges = list(EmpathyNudge.objects.filter(sender=request.user).values(
-            'id', 'recipient_id', 'message', 'support_preference', 'status', 'delivery_status', 'created_at'))
-        outcomes = list(SupportOutcome.objects.filter(member=request.user).values(
-            'nudge_id', 'result', 'private_note', 'created_at'))
-        audit = list(ConsentEvent.objects.filter(actor=request.user).values(
-            'event', 'categories', 'occurred_at'))
-        return Response({'check_ins': check_ins, 'nudges_sent': nudges,
-                         'outcomes': outcomes, 'consent_events': audit})
+    @action(detail=False, methods=['post'], url_path='export', throttle_classes=[ExportThrottle])
+    def export(self, request):
+        from django.http import HttpResponse
+        from .data_export import build_export
+        password = request.data.get('password')
+        if not isinstance(password, str) or not 1 <= len(password) <= 1024:
+            raise ValidationError({'password': 'Enter your current password.'})
+        if not request.user.check_password(password):
+            raise PermissionDenied('Your current password did not match.')
+        response = HttpResponse(build_export(request.user), content_type='application/zip')
+        response['Content-Disposition'] = (
+            f'attachment; filename="hearteli-data-export-{timezone.now().date().isoformat()}.zip"'
+        )
+        response['Cache-Control'] = 'private, no-store'
+        return response
 
     @action(detail=False, methods=['post'])
     def delete_account(self, request):

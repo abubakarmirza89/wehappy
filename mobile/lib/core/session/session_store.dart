@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,11 +15,26 @@ class SessionStore {
   static Future<SessionStore> create() async {
     final prefs = await SharedPreferences.getInstance();
     const secure = FlutterSecureStorage();
-    return SessionStore._(
-      prefs,
-      secure,
-      await secure.read(key: _secureTokenKey),
-    );
+    String? token;
+    try {
+      token = await secure.read(key: _secureTokenKey);
+    } on PlatformException {
+      // Android can restore encrypted preferences without the original key.
+      // Drop only the unreadable session, not unrelated preferences or drafts.
+      try {
+        await secure
+            .delete(key: _secureTokenKey)
+            .timeout(const Duration(seconds: 2));
+      } on Exception {
+        // Opening the app must not depend on cleanup succeeding.
+      }
+    }
+    if (token?.isNotEmpty != true) {
+      await prefs.remove(_userIdKey);
+      await prefs.remove(_userNameKey);
+      await prefs.remove(_therapistKey);
+    }
+    return SessionStore._(prefs, secure, token);
   }
 
   String? get token => _token;
@@ -26,18 +42,10 @@ class SessionStore {
   String? get userName => _preferences.getString(_userNameKey);
   bool get isTherapist => _preferences.getBool(_therapistKey) ?? false;
   bool get isAuthenticated => _token?.isNotEmpty == true;
-  bool get deviceNotificationsEnabled =>
-      _preferences.getBool('hearteli_push_enabled_${userId ?? ''}') ?? true;
   bool get hasCompletedSetup =>
       _preferences.getBool('hearteli_setup_${userId ?? ''}') ?? false;
   Future<void> completeSetup() async =>
       _preferences.setBool('hearteli_setup_${userId ?? ''}', true);
-  Future<void> setDeviceNotificationsEnabled(bool enabled) async {
-    await _preferences.setBool(
-      'hearteli_push_enabled_${userId ?? ''}',
-      enabled,
-    );
-  }
 
   Future<void> save({
     required String token,

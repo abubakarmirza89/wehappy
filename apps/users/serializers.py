@@ -109,6 +109,11 @@ class UserSerializer(serializers.ModelSerializer):
         filtered_data = {key: value for key, value in data.items() if key not in fields_to_exclude}
         return filtered_data
 
+    def validate_email(self, value):
+        if self.instance and value.casefold() != self.instance.email.casefold():
+            raise serializers.ValidationError('Contact Hearteli support to change your account email.')
+        return value
+
     def update(self, instance, validated_data):
         therapist_profile_data = validated_data.pop("therapist_profile", None)
         instance = super().update(instance, validated_data)
@@ -164,17 +169,31 @@ class UserAppointmentSerializer(serializers.ModelSerializer):
     therapist_id = serializers.IntegerField(read_only=True)
     review_submitted = serializers.SerializerMethodField()
     def get_review_submitted(self,obj): return Feedback.objects.filter(appointment=obj).exists()
+    display_time = serializers.SerializerMethodField()
+
+    def get_display_time(self, obj):
+        from .appointment_time import local_appointment
+        request = self.context.get('request')
+        return local_appointment(obj, request.user if request else None)
+
     url = serializers.HyperlinkedIdentityField(
         view_name="users:appointment-detail", lookup_field="pk")
     therapist = serializers.ReadOnlyField(source="therapist.name")
 
     class Meta:
         model = Appointment
-        fields = ["id", "duration_minutes", "therapist_id", "review_submitted", "url", "therapist", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
-        read_only_fields = ["duration_minutes","fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        fields = ["id", "display_time", "billing_currency", "duration_minutes", "therapist_id", "review_submitted", "url", "therapist", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        read_only_fields = ["billing_currency", "duration_minutes","fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
 
 
 class TherapistAppointmentSerializer(serializers.ModelSerializer):
+    display_time = serializers.SerializerMethodField()
+
+    def get_display_time(self, obj):
+        from .appointment_time import local_appointment
+        request = self.context.get('request')
+        return local_appointment(obj, request.user if request else None)
+
     url = serializers.HyperlinkedIdentityField(
         view_name="users:appointment-detail", lookup_field="pk")
     user = serializers.ReadOnlyField(source="user.name")
@@ -185,8 +204,8 @@ class TherapistAppointmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Appointment
-        fields = ["id", "url", "user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
-        read_only_fields = ["user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "created_at"]
+        fields = ["id", "display_time", "billing_currency", "url", "user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "status", "created_at"]
+        read_only_fields = ["billing_currency", "user", "date", "time", "location", "reason", "fee", "commission", "therapist_earnings", "payment_status", "created_at"]
 
 
 class WithdrawalRequestSerializer(serializers.ModelSerializer):

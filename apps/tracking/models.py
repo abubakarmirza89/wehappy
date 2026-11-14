@@ -378,6 +378,7 @@ class CircleInviteCode(models.Model):
 
 
 class CircleSignupInvitation(models.Model):
+    requires_link = models.BooleanField(default=False)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_circle_signup_invitations')
     email = models.EmailField()
     relationship = models.CharField(max_length=40, default='Friend')
@@ -396,7 +397,7 @@ class EmpathyNudge(models.Model):
     support_context=models.CharField(max_length=12,default='unknown',choices=[('unknown','Unknown'),('ordinary','Ordinary support'),('safety','Safety pathway')])
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_sent')
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hearteli_nudges_received')
-    check_in = models.ForeignKey(MoodCheckIn, on_delete=models.CASCADE, related_name='hearteli_nudges')
+    check_in = models.ForeignKey(MoodCheckIn, null=True, blank=True, on_delete=models.CASCADE, related_name='hearteli_nudges')
     message = models.CharField(max_length=500)
     support_preference = models.CharField(max_length=120, blank=True)
     # Historical nudges predate retry keys; all new API writes require one.
@@ -433,6 +434,7 @@ class ConsentEvent(models.Model):
 
 
 class HearteliPreferences(models.Model):
+    directory_market = models.CharField(max_length=2, blank=True, default='')
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='hearteli_preferences')
     use_contexts = models.JSONField(default=list, blank=True)
     reminder_enabled = models.BooleanField(default=False)
@@ -443,6 +445,7 @@ class HearteliPreferences(models.Model):
     email_notifications = models.BooleanField(default=True)
     sponsor_opt_in = models.BooleanField(default=False)
     timezone_name = models.CharField(max_length=64, default="UTC")
+    timezone_selected = models.BooleanField(default=False)
     reminder_time = models.TimeField(default="09:00")
 
 

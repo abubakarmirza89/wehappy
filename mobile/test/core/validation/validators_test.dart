@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:myapp/core/validation/validators.dart';
+import '../../../lib/core/validation/validators.dart';
 
 void main() {
   group('Validators', () {

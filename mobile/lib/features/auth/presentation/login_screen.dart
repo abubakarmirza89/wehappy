@@ -5,9 +5,9 @@ import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../hearteli/presentation/components.dart';
 import '../../../core/validation/validators.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_text_field.dart';
-import '../../../shared/utils/toast.dart';
 import 'signup_screen.dart';
 import '../../home/presentation/app_shell.dart';
 import '../data/auth_repository.dart';
@@ -33,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
   late final AuthRepository _auth;
   bool _busy = false;
   String? _error;
+  bool _verificationPending = false;
 
   @override
   void initState() {
@@ -48,10 +49,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_busy || !_formKey.currentState!.validate()) return;
     setState(() {
       _busy = true;
       _error = null;
+      _verificationPending = false;
     });
     try {
       await _auth.login(email: _email.text.trim(), password: _password.text);
@@ -65,71 +67,44 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         (_) => false,
       );
-    } on ApiException catch (error) {
-      setState(() => _error = error.message);
-      if (mounted) AppToast.error(context, error.message);
-    } catch (_) {
-      setState(
-        () => _error = 'Unable to connect. Check the API URL and try again.',
-      );
-      if (mounted)
-        AppToast.error(
-          context,
-          'Unable to connect. Check the API URL and try again.',
-        );
+    } catch (error) {
+      if (mounted) setState(() {
+        _verificationPending = error is ApiException && error.code == 'email_verification_pending';
+        _error = _verificationPending
+            ? 'Verify your email before signing in. Check your inbox or resend the link.'
+            : formRequestError(error, invalid: 'The email or password did not match. Check both and try again.');
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resendVerification() async {
+    if (_busy) return;
+    if (Validators.email(_email.text) != null) {
+      setState(() => _error = 'Enter your account email address first.');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.apiClient.post('/api/resend-verification/', body: {'email': _email.text.trim()});
+      if (mounted) setState(() => _error = 'If verification is pending, a new link will be sent.');
+    } catch (e) {
+      if (mounted) setState(() => _error = formRequestError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _forgotPassword(BuildContext context) async {
-    final email = TextEditingController(text: _email.text.trim());
-    await showDialog(
+    final sent = await showDialog<bool>(
       context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('Reset password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'We will send a reset link if this address has an account.',
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email address'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialog),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              try {
-                await widget.apiClient.post(
-                  '/api/forgot-password/',
-                  body: {'email': email.text.trim()},
-                );
-                if (dialog.mounted) Navigator.pop(dialog);
-                if (context.mounted)
-                  showCalmMessage(
-                    context,
-                    'If an account exists, a reset link was sent.',
-                  );
-              } catch (e) {
-                if (dialog.mounted) showCalmMessage(dialog, '$e');
-              }
-            },
-            child: const Text('Send link'),
-          ),
-        ],
-      ),
+      barrierDismissible: false,
+      builder: (_) => _ResetPasswordDialog(apiClient: widget.apiClient),
     );
-    email.dispose();
+    if (sent == true && context.mounted) {
+      showCalmMessage(context, 'If an account exists, a reset link was sent.');
+    }
   }
 
   @override
@@ -184,6 +159,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 22),
                     AppButton(label: 'Sign in', onPressed: _login, busy: _busy),
                     TextButton(
+                      onPressed: _busy ? null : _resendVerification,
+                      child: const Text('Resend verification email'),
+                    ),
+                    TextButton(
                       onPressed: () => _forgotPassword(context),
                       child: const Text('Forgot password?'),
                     ),
@@ -210,4 +189,78 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+
+class _ResetPasswordDialog extends StatefulWidget {
+  const _ResetPasswordDialog({required this.apiClient});
+  final ApiClient apiClient;
+
+  @override
+  State<_ResetPasswordDialog> createState() => _ResetPasswordDialogState();
+}
+
+class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
+  final email = TextEditingController();
+  final focus = FocusNode();
+  bool busy = false;
+  String? fieldError, requestError;
+
+  Future<void> submit() async {
+    if (busy) return;
+    final validation = Validators.email(email.text);
+    if (validation != null) {
+      setState(() => fieldError = validation);
+      focusInvalidField(focus);
+      return;
+    }
+    setState(() {
+      busy = true;
+      fieldError = requestError = null;
+    });
+    try {
+      await widget.apiClient.post('/api/forgot-password/', body: {'email': email.text.trim()});
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) setState(() => requestError = formRequestError(error));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    email.dispose();
+    focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !busy,
+    child: AlertDialog(
+      scrollable: true,
+      title: const Text('Reset password'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('We will send a reset link if this address has an account.'),
+          const SizedBox(height: 14),
+          TextField(
+            controller: email, focusNode: focus, readOnly: busy,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(labelText: 'Email address', error: inlineFieldError(fieldError)),
+            onChanged: (_) => setState(() { fieldError = requestError = null; }),
+            onSubmitted: (_) => submit(),
+          ),
+          if (requestError != null)
+            Semantics(liveRegion: true, child: StatusPanel(message: requestError!)),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: busy ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: busy ? null : submit, child: Text(busy ? 'Checking…' : 'Send link')),
+      ],
+    ),
+  );
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/validation/form_feedback.dart';
+import '../../../core/validation/validators.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/presentation/login_screen.dart';
@@ -232,21 +234,31 @@ class _FirstRunSetupState extends State<FirstRunSetup> {
   int step = 0;
   final selected = <String>{};
   final email = TextEditingController();
-  String? error;
+  String? error, emailError;
+  final emailFocus = FocusNode();
   bool busy = false;
   @override
   void dispose() {
     email.dispose();
+    emailFocus.dispose();
     super.dispose();
   }
 
   Future<void> next() async {
+    if (busy) return;
     if (step < 2) {
       setState(() => step++);
       return;
     }
+    final address = email.text.trim();
+    if (address.isNotEmpty && Validators.email(address) != null) {
+      setState(() => emailError = 'Enter a valid email address or leave this blank.');
+      focusInvalidField(emailFocus);
+      return;
+    }
     setState(() {
       busy = true;
+      emailError = null;
       error = null;
     });
     try {
@@ -254,17 +266,17 @@ class _FirstRunSetupState extends State<FirstRunSetup> {
         '/api/tracking/hearteli/preferences/update_mine/',
         body: {'use_contexts': selected.toList()},
       );
-      if (email.text.trim().isNotEmpty)
+      if (address.isNotEmpty)
         await widget.apiClient.post(
-          '/api/tracking/hearteli/circle/',
+          '/api/tracking/hearteli/circle/invite-signup/',
           body: {
-            'recipient_email_input': email.text.trim(),
+            'email': address,
             'relationship': 'Friend',
           },
         );
-      widget.onDone();
+      if (mounted) widget.onDone();
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -359,9 +371,12 @@ class _FirstRunSetupState extends State<FirstRunSetup> {
             const SizedBox(height: 22),
             TextField(
               controller: email,
+              focusNode: emailFocus,
+              onChanged: (_) => setState(() => emailError = null),
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Their Hearteli email (optional)',
+              decoration: InputDecoration(
+                labelText: 'Their email (optional)',
+                error: inlineFieldError(emailError),
               ),
             ),
             const SizedBox(height: 10),
@@ -371,7 +386,7 @@ class _FirstRunSetupState extends State<FirstRunSetup> {
           ],
           const SizedBox(height: 24),
           if (error != null)
-            Text(error!, style: const TextStyle(color: AppColors.error)),
+            Semantics(liveRegion: true, child: StatusPanel(message: error!)),
           FilledButton(
             onPressed: busy ? null : next,
             child: Text(

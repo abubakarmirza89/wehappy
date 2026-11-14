@@ -1,0 +1,25 @@
+{% extends 'work/base.html' %}
+{% block content %}
+<section class="card auth-card">
+<h1>Trusted Circle invitation</h1>
+{% if outcome == 'sign_in' %}
+<p>Sign in with the invited email address, or create and verify an account with that address.</p>
+<p><a href="{% url 'hearteli-work-login' %}?next={{ next_url|urlencode }}">Sign in to review</a></p>
+<p><a href="{% url 'hearteli-work-register' %}">Create a Hearteli account</a></p>
+{% elif outcome == 'wrong_account' %}
+<p>Sign in with the account matching the invited email address to continue.</p>
+{% elif outcome == 'review' %}
+<p>You can accept or decline. Accepting does not share your check-ins or enable nudges.</p>
+<form method="post">{% csrf_token %}
+<button name="decision" value="accept">Accept invitation</button>
+<button name="decision" value="decline">Decline invitation</button>
+</form>
+{% elif outcome == 'accepted' %}
+<p>Invitation accepted. You can manage this connection in your Circle.</p>
+{% elif outcome == 'declined' %}
+<p>Invitation declined. The sender was not notified.</p>
+{% else %}
+<p>This invitation has expired, was already used, or is no longer available. Ask the sender for a new invitation if needed.</p>
+{% endif %}
+</section>
+{% endblock %}

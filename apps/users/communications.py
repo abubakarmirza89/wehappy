@@ -118,6 +118,7 @@ def password_changed(user):
 
 def send_circle_signup_invitation(invitation):
     from urllib.parse import urljoin
+    from apps.tracking.circle_invitation_web import invitation_path
 
     from django.core.mail import EmailMultiAlternatives
 
@@ -125,24 +126,24 @@ def send_circle_signup_invitation(invitation):
     subject = 'You’re invited to join a Circle on Hearteli'
     message = (
         f'{inviter_name} invited you to join their trusted Circle on Hearteli. '
-        f'Download the Hearteli app and create an account with {invitation.email}. '
-        'You can review the invitation in the app and choose whether to accept.'
+        f'Sign in or create an account with {invitation.email}. '
+        'You can review this invitation and choose whether to accept.'
     )
-    url = settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/'
+    url = settings.HEARTELI_PUBLIC_URL.rstrip('/') + invitation_path(invitation)
     context = {
         'subject': subject,
         'message': message,
         'url': url,
-        'cta_label': 'Visit Hearteli',
+        'cta_label': 'Review invitation',
         'logo_url': urljoin(
             settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/',
             static('hearteli/logo.png').lstrip('/'),
         ),
-        'footer_text': 'Your Circle invitation will be available for 30 days.',
+        'footer_text': 'Your Circle invitation will be available for 7 days.',
         'email_signature': EMAIL_SIGNATURE,
         'security': False,
     }
-    text = f'{message}\n\nVisit Hearteli: {url}\n\n{email_signature_text()}'
+    text = f'{message}\n\nReview invitation: {url}\n\n{email_signature_text()}'
     email = EmailMultiAlternatives(
         subject,
         text,
@@ -215,6 +216,9 @@ def delivery_allowed(delivery):
             return 'suppress'
         if not user.device_tokens.filter(is_active=True).exists():
             return 'suppress'
+    if delivery.kind == 'verify_email':
+        from .email_verification import needs_verification
+        return 'send' if needs_verification(user) else 'suppress'
     if delivery.kind in ('welcome', 'password_reset', 'password_changed'):
         if delivery.kind == 'password_reset':
             from urllib.parse import urlsplit, parse_qs
@@ -322,6 +326,7 @@ def dispatch_email_batch(limit=100, delivery_ids=None):
                            'message': delivery.message, 'url': url,
                            'cta_label': {
                                'password_reset': 'Reset password',
+                               'verify_email': 'Verify email',
                                'circle_invite': 'View invitation',
                                'nudge': 'Open Hearteli',
                            }.get(delivery.kind, '' if delivery.kind == 'password_changed' else 'Open Hearteli'),

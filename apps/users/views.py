@@ -53,6 +53,10 @@ class LoginView(APIView):
         password = request.data.get('password')
         user = authenticate(request, email=email, password=password)
         if user is not None:
+            from .email_verification import needs_verification
+            if needs_verification(user):
+                return Response({'code': 'email_verification_pending',
+                                 'detail': 'Verify your email before signing in.'}, status=403)
             login(request, user)
             token, _ = Token.objects.get_or_create(user=user)
             
@@ -168,7 +172,10 @@ class SignupView(APIView):
             is_therapist = False
             if not User.objects.filter(name=username).exists():
                 user = User.objects.create_user(
-                    name=username, password=password, email=email, phone_number=phone_number, is_therapist=is_therapist)
+                    name=username, password=password, email=email, phone_number=phone_number, is_therapist=is_therapist,
+                    email_verification_required=True)
+                from .email_verification import queue_verification
+                queue_verification(user)
                 return Response({'message': 'Signup successful.'})
             else:
                 return Response({'error': 'Username already exists.'}, status=status.HTTP_400_BAD_REQUEST)

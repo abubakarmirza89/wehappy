@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
 import 'components.dart';
@@ -113,7 +114,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     'support_preferences': preferences.toList(),
   };
   Future<void> _save() async {
-    if (feeling < 0) return;
+    if (busy || feeling < 0) return;
     setState(() {
       busy = true;
       error = null;
@@ -131,7 +132,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       });
       await _loadConnections();
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -155,7 +156,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
               .toList(),
         );
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
@@ -205,7 +206,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         _showProgress();
       }
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -286,12 +287,15 @@ class _CheckInScreenState extends State<CheckInScreen> {
         : feeling >= 3
         ? 'You can let someone you trust know that a kind word might mean a lot today.'
         : 'Making space for how you feel is a meaningful step.';
+    final isPrivateCompletion =
+        step == 3 && (feeling < 3 && !patternSuggested || sharingDeclined);
+    final totalSteps = isPrivateCompletion ? 4 : 5;
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
             LinearProgressIndicator(
-              value: (step + 1) / 5,
+              value: (step + 1) / totalSteps,
               color: AppColors.coral,
               backgroundColor: AppColors.blush,
               minHeight: 4,
@@ -310,7 +314,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       ),
                     ),
                   Text(
-                    'STEP ${step + 1} OF 5',
+                    'STEP ${step + 1} OF $totalSteps',
                     style: const TextStyle(
                       color: AppColors.coral,
                       fontSize: 12,
@@ -623,8 +627,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                             : 'Continue',
                       ),
                     ),
-                  if (step == 3 && (feeling < 3 && !patternSuggested ||
-                      sharingDeclined))
+                  if (isPrivateCompletion)
                     FilledButton(
                       onPressed: _finishPrivateCheckIn,
                       child: const Text('Done'),

@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
-import 'circle_screen.dart';
+import 'nudge_compose_screen.dart';
 import 'components.dart';
 
 class SafetyScreen extends StatefulWidget {
@@ -43,7 +43,9 @@ class _SafetyScreenState extends State<SafetyScreen> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(),
     body: ListView(
-      padding: screenPadding,
+      padding: screenPadding.add(
+        EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+      ),
       children: [
         const Icon(
           Icons.health_and_safety_outlined,
@@ -93,6 +95,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
             icon: const Icon(Icons.support_agent),
             label: const Text('Lifeline — 13 11 14 (24/7)'),
           ),
+          const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: () => dial('1300224636'),
             icon: const Icon(Icons.support_agent),
@@ -110,6 +113,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
             icon: const Icon(Icons.support_agent),
             label: const Text('Suicide & Crisis Lifeline — call 988'),
           ),
+          const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: () => text('988'),
             icon: const Icon(Icons.sms_outlined),
@@ -128,15 +132,17 @@ class _SafetyScreenState extends State<SafetyScreen> {
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => CircleScreen(
+              builder: (_) => NudgeComposeScreen(
                 apiClient: widget.apiClient,
                 sessionStore: widget.sessionStore,
+                fromImmediateSupport: true,
               ),
             ),
           ),
           icon: const Icon(Icons.people_outline),
           label: const Text('Contact someone in my Circle'),
         ),
+        const SizedBox(height: 20),
         const HearteliCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

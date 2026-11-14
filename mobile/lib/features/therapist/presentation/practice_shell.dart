@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../../core/session/session_store.dart';
 import '../../hearteli/presentation/components.dart';
 import '../../hearteli/presentation/settings_screen.dart';
@@ -92,6 +93,13 @@ class _TherapistApplicationState extends State<TherapistApplicationScreen> {
     ])
       key: TextEditingController(),
   };
+  static const labels = {
+    'bio': 'Professional bio',
+    'credentials': 'Professional qualifications',
+    'license_number': 'Registration or licence number',
+    'location': 'Jurisdiction of practice',
+    'modalities': 'Service modes or approaches',
+  };
   Map<String, dynamic>? application;
   String? error;
   bool busy = false;
@@ -115,13 +123,13 @@ class _TherapistApplicationState extends State<TherapistApplicationScreen> {
       if (mounted)
         setState(() => application = Map<String, dynamic>.from(value));
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
   Future<void> submit() async {
-    if (!form.currentState!.validate()) return;
-    setState(() => busy = true);
+    if (busy || !form.currentState!.validate()) return;
+    setState(() { busy = true; error = null; });
     try {
       await widget.apiClient.post(
         '/api/users/therapist/application/',
@@ -129,7 +137,7 @@ class _TherapistApplicationState extends State<TherapistApplicationScreen> {
       );
       await load();
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -144,7 +152,7 @@ class _TherapistApplicationState extends State<TherapistApplicationScreen> {
         const PageIntro(
           title: 'Bring your practice to Hearteli',
           subtitle:
-              'Submit your credentials for review. Approval is required before you can offer sessions. Admin-configured commission applies based on whether clients are platform-acquired or therapist-referred.',
+              'Submit your professional details for review. Submission does not publish your profile or enable bookings. Verification and publication are separate decisions.',
         ),
         if (error != null)
           StatusPanel(message: error!, action: 'Retry', onAction: load),
@@ -168,9 +176,9 @@ class _TherapistApplicationState extends State<TherapistApplicationScreen> {
                       padding: const EdgeInsets.only(top: 16),
                       child: TextFormField(
                         controller: entry.value,
-                        maxLength: entry.key == 'bio' ? 2000 : 500,
+                        maxLength: const {'bio': 2000, 'credentials': 500}[entry.key] ?? 120,
                         decoration: InputDecoration(
-                          labelText: entry.key.replaceAll('_', ' '),
+                          labelText: '${labels[entry.key]} (required)',
                         ),
                         validator:
                             (v) =>

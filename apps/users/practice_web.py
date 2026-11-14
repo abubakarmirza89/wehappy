@@ -1,4 +1,5 @@
 from django.contrib.auth.views import LoginView
+from django.contrib.auth.forms import AuthenticationForm
 from django.urls import reverse
 from django import forms
 from django.contrib.auth.decorators import login_required
@@ -113,7 +114,41 @@ def appointment(request,pk):
             text=request.POST.get('body','').strip()
             if 1<=len(text)<=2000: AppointmentMessage.objects.create(appointment=a,author=request.user,body=text)
         return redirect('practice-appointment',pk=pk)
-    return render(request,'practice/appointment.html',{'appointment':a,'chat_messages':a.messages.select_related('author'),'has_review':hasattr(a,'review')})
+    from .appointment_time import appointment_time_text
+    return render(request,'practice/appointment.html', {
+        'appointment': a,
+        'appointment_time': appointment_time_text(a, request.user),
+        'chat_messages': a.messages.select_related('author'),
+        'has_review': hasattr(a, 'review'),
+    })
+
+
+@login_required(login_url='/practice/login/')
+def appointment_calendar(request, pk):
+    from datetime import timedelta
+    from django.http import HttpResponse
+    from .appointment_time import appointment_start
+
+    appointment = get_object_or_404(
+        Appointment.objects.filter(Q(user=request.user) | Q(therapist=request.user)),
+        pk=pk,
+    )
+    start = appointment_start(appointment)
+    end = start + timedelta(minutes=appointment.duration_minutes)
+    stamp = lambda value: value.strftime('%Y%m%dT%H%M%SZ')
+    body = '\r\n'.join([
+        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Hearteli//Appointments//EN',
+        'BEGIN:VEVENT', f'UID:appointment-{appointment.pk}@hearteli.com',
+        f'DTSTAMP:{stamp(timezone.now())}', f'DTSTART:{stamp(start)}',
+        f'DTEND:{stamp(end)}', 'SUMMARY:Hearteli appointment',
+        'STATUS:CANCELLED' if appointment.status == 'CANCELED' else 'STATUS:CONFIRMED',
+        'END:VEVENT', 'END:VCALENDAR', '',
+    ])
+    response = HttpResponse(body, content_type='text/calendar; charset=utf-8')
+    response['Content-Disposition'] = 'attachment; filename="hearteli-appointment.ics"'
+    response['Cache-Control'] = 'private, no-store'
+    return response
+
 
 class BookingForm(forms.Form):
     date=forms.DateField(widget=forms.DateInput(attrs={'type':'date'}))
@@ -169,13 +204,23 @@ def provider(request,pk):
     return render(request,'practice/provider.html',{'provider':therapist,'form':form,'reviews':reviews,'average_rating':reviews.aggregate(value=Avg('rating'))['value'],'review_count':reviews.count()})
 
 
+class VerifiedAuthenticationForm(AuthenticationForm):
+    def confirm_login_allowed(self, user):
+        super().confirm_login_allowed(user)
+        from .email_verification import needs_verification
+        if needs_verification(user):
+            raise forms.ValidationError('Verify your email before signing in.')
+
+
 class PracticeAwareLoginView(LoginView):
+    authentication_form = VerifiedAuthenticationForm
     template_name='practice/login.html'
     def get_success_url(self):
         return self.get_redirect_url() or reverse('practice-dashboard')
 
 
 class WorkLoginView(LoginView):
+    authentication_form = VerifiedAuthenticationForm
     template_name='work/login.html'
     def get_success_url(self):
         return self.get_redirect_url() or reverse('hearteli-work-index')
@@ -183,11 +228,11 @@ class WorkLoginView(LoginView):
 
 def signup(request):
     from apps.tracking.work_web import OwnerRegistrationForm
-    from django.contrib.auth import login
+    from .email_verification import queue_verification
     if request.user.is_authenticated: return redirect('practice-apply')
     form=OwnerRegistrationForm(request.POST or None)
     if request.method=='POST' and form.is_valid():
-        user=User.objects.create_user(name=form.cleaned_data['name'],email=form.cleaned_data['email'],phone_number=form.cleaned_data['phone_number'],password=form.cleaned_data['password'])
-        login(request,user,backend='django.contrib.auth.backends.ModelBackend')
-        return redirect('practice-apply')
+        user=User.objects.create_user(name=form.cleaned_data['name'],email=form.cleaned_data['email'],phone_number=form.cleaned_data['phone_number'],password=form.cleaned_data['password'],email_verification_required=True)
+        queue_verification(user)
+        return redirect('hearteli-verification-pending')
     return render(request,'practice/signup.html',{'form':form})

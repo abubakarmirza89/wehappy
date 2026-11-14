@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 import '../../therapist/presentation/practice_shell.dart';
 
@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../../core/notifications/firebase_service.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
@@ -81,10 +82,7 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => NotificationSettings(
-                      apiClient: apiClient,
-                      sessionStore: sessionStore,
-                    ),
+                    builder: (_) => NotificationSettings(apiClient: apiClient),
                   ),
                 ),
               ),
@@ -175,7 +173,7 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
           error = null;
         });
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
@@ -192,10 +190,13 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Privacy & Consent')),
     body: RefreshIndicator(
       onRefresh: load,
       child: ListView(
-        padding: screenPadding,
+        padding: screenPadding.add(
+          EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+        ),
         children: [
           const PageIntro(
             title: 'Who can see what?',
@@ -286,34 +287,81 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
 }
 
 class NotificationSettings extends StatefulWidget {
-  const NotificationSettings({
-    super.key,
-    required this.apiClient,
-    required this.sessionStore,
-  });
+  const NotificationSettings({super.key, required this.apiClient});
   final ApiClient apiClient;
-  final SessionStore sessionStore;
   @override
   State<NotificationSettings> createState() => _NotificationSettingsState();
 }
 
-class _NotificationSettingsState extends State<NotificationSettings> {
+class _NotificationSettingsState extends State<NotificationSettings>
+    with WidgetsBindingObserver {
   bool reminder = false,
       nudge = true,
       rich = false,
       busy = false,
-      deviceNotifications = true,
       deviceNotificationsBusy = false,
       emailNotifications = true,
       sponsorOptIn = false;
   String timezoneName = "UTC";
+  bool timezoneEdited = false;
   TimeOfDay reminderTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay? start, end;
   String? error;
+  bool? devicePermission;
+  String? deviceFeedback;
+  int _permissionRead = 0;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    refreshDevicePermission();
     load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !deviceNotificationsBusy) {
+      refreshDevicePermission();
+    }
+  }
+
+  Future<bool?> refreshDevicePermission() async {
+    final read = ++_permissionRead;
+    bool? granted;
+    try {
+      granted = await FirebaseService(widget.apiClient)
+          .notificationPermissionGranted();
+    } catch (_) {
+      // A failed query is unknown, not an OS denial.
+    }
+    if (mounted && read == _permissionRead) {
+      setState(() {
+        if (!deviceNotificationsBusy && devicePermission != granted) {
+          deviceFeedback = null;
+        }
+        devicePermission = granted;
+      });
+    }
+    return granted;
+  }
+
+  Future<void> openDeviceSettings() async {
+    try {
+      await FirebaseService.openDeviceSettings();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => deviceFeedback =
+              'Open your phone settings and allow notifications for Hearteli.',
+        );
+      }
+    }
   }
 
   TimeOfDay? parse(dynamic text) {
@@ -331,14 +379,8 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       final data = await widget.apiClient.get(
         '/api/tracking/hearteli/preferences/',
       );
-      final permissionGranted = await FirebaseService(
-        widget.apiClient,
-      ).notificationPermissionGranted();
       if (mounted)
         setState(() {
-          deviceNotifications =
-              widget.sessionStore.deviceNotificationsEnabled &&
-              permissionGranted;
           reminder = data['reminder_enabled'] == true;
           nudge = data['nudge_notifications'] != false;
           rich = data['rich_lock_preview'] == true;
@@ -352,45 +394,66 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           end = parse(data['quiet_end']);
         });
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
   Future<void> setDeviceNotifications(bool enabled) async {
-    setState(() => deviceNotificationsBusy = true);
+    if (deviceNotificationsBusy) return;
+    setState(() {
+      deviceNotificationsBusy = true;
+      deviceFeedback = null;
+    });
     try {
       if (enabled) {
-        final registered = await FirebaseService(
-          widget.apiClient,
-        ).initialize();
-        if (!registered) {
-          final permissionGranted = await FirebaseService(
-            widget.apiClient,
-          ).notificationPermissionGranted();
-          if (mounted) {
-            showCalmMessage(
-              context,
-              permissionGranted
-                  ? 'Could not register this phone for notifications. Check your internet connection and try again.'
-                  : 'Notification permission was not granted. Allow Hearteli notifications in your phone settings, then turn this on again.',
-            );
-          }
+        final registered = await FirebaseService(widget.apiClient)
+            .initialize(requestPermission: devicePermission != true);
+        final granted = await refreshDevicePermission();
+        if (!mounted) return;
+        if (!registered || granted == false) {
+          setState(
+            () => deviceFeedback = granted == false
+                ? 'Allow Hearteli notifications in your phone settings, then try again.'
+                : 'Could not register this phone for push updates. Check your connection and try again.',
+          );
           return;
         }
       } else {
         await FirebaseService(widget.apiClient).unregisterCurrentToken();
       }
       await widget.sessionStore.setDeviceNotificationsEnabled(enabled);
-      if (mounted) setState(() => deviceNotifications = enabled);
-    } catch (e) {
-      if (mounted) showCalmMessage(context, 'Could not update device notifications: $e');
+      if (mounted) {
+        setState(
+          () => deviceFeedback = enabled
+              ? 'Hearteli push updates enabled.'
+              : 'Hearteli push updates turned off on this device.',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => deviceFeedback =
+              'Could not update Hearteli push settings. Please try again.',
+        );
+      }
     } finally {
       if (mounted) setState(() => deviceNotificationsBusy = false);
     }
   }
 
   Future<void> save() async {
-    setState(() => busy = true);
+    if (busy) return;
+    if ((start == null) != (end == null) || (start != null && start == end)) {
+      setState(
+        () => error =
+            'Choose different start and end times, or clear both quiet hours.',
+      );
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
     try {
       await widget.apiClient.patch(
         '/api/tracking/hearteli/preferences/update_mine/',
@@ -398,7 +461,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           'reminder_enabled': reminder,
           'email_notifications': emailNotifications,
           'sponsor_opt_in': sponsorOptIn,
-          'timezone_name': timezoneName,
+          if (timezoneEdited) 'timezone_name': timezoneName,
           'reminder_time': format(reminderTime),
           'nudge_notifications': nudge,
           'rich_lock_preview': rich,
@@ -412,7 +475,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           'Preferences saved. Email delivery follows your quiet hours. Push delivery also requires device permission and server setup.',
         );
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -420,25 +483,55 @@ class _NotificationSettingsState extends State<NotificationSettings> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Notifications & quiet hours')),
     body: ListView(
-      padding: screenPadding,
+      padding: screenPadding.add(
+        EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+      ),
       children: [
         const PageIntro(
           title: 'A gentle reminder, when you want one',
-          subtitle:
-              "Choose whether you'd like check-in reminders and updates from people you've connected with. You're always in control.",
+          subtitle: "Choose whether you'd like check-in reminders and updates from people you've connected with. You're always in control.",
         ),
         const SizedBox(height: 18),
         SwitchListTile(
-          title: const Text('Device notifications'),
-          subtitle: const Text(
-            'Allow this phone to receive Hearteli push notifications.',
+          title: const Text('Hearteli push updates'),
+          subtitle: Text(
+            devicePermission == null
+                ? 'Device notification permission: not available'
+                : 'Device notification permission: ${devicePermission! ? 'On' : 'Off'}',
           ),
-          value: deviceNotifications,
-          onChanged: deviceNotificationsBusy
-              ? null
-              : setDeviceNotifications,
+          value:
+              widget.sessionStore.deviceNotificationsEnabled &&
+              devicePermission == true,
+          onChanged: deviceNotificationsBusy ? null : setDeviceNotifications,
         ),
+        if (devicePermission == false && FirebaseService.canOpenDeviceSettings)
+          TextButton(
+            onPressed: deviceNotificationsBusy ? null : openDeviceSettings,
+            child: const Text('Open device notification settings'),
+          ),
+        if (deviceFeedback != null)
+          Semantics(
+            liveRegion: true,
+            child: StatusPanel(message: deviceFeedback!),
+          )
+        else if (devicePermission == true &&
+            widget.sessionStore.deviceNotificationsEnabled &&
+            !deviceNotificationsBusy)
+          ValueListenableBuilder<bool?>(
+            valueListenable: FirebaseService.pushRegistration,
+            builder: (context, registered, child) => registered == false
+                ? Semantics(
+                    liveRegion: true,
+                    child: StatusPanel(
+                      message: 'Device permission is on, but this phone could not register for Hearteli push updates.',
+                      action: 'Retry push setup',
+                      onAction: () => setDeviceNotifications(true),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
         SwitchListTile(
           title: const Text('Optional sponsor acknowledgements'),
           subtitle: const Text(
@@ -460,11 +553,17 @@ class _NotificationSettingsState extends State<NotificationSettings> {
             timezoneName,
             'UTC',
             'Asia/Karachi',
+            'Australia/Sydney',
             'Europe/London',
             'America/New_York',
             'Asia/Dubai',
           }.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-          onChanged: (v) => setState(() => timezoneName = v ?? timezoneName),
+          onChanged: (v) => setState(() {
+            if (v != null) {
+              timezoneName = v;
+              timezoneEdited = true;
+            }
+          }),
         ),
         OutlinedButton(
           onPressed: () async {
@@ -562,20 +661,58 @@ class DataSettings extends StatefulWidget {
 class _DataSettingsState extends State<DataSettings> {
   bool busy = false;
   String? error;
+  String? exportStatus;
+  static const _exportChannel = MethodChannel('hearteli/data_export');
+
   Future<void> export() async {
-    setState(() => busy = true);
+    if (busy) return;
+    setState(() {
+      busy = true;
+      exportStatus = null;
+    });
     try {
-      final data = await widget.apiClient.get('/api/tracking/hearteli/data/');
-      await Clipboard.setData(
-        ClipboardData(text: const JsonEncoder.withIndent('  ').convert(data)),
+      final password = await showDialog<String>(
+        context: context,
+        builder: (_) => const _ExportPasswordDialog(),
       );
-      if (mounted)
-        showCalmMessage(
-          context,
-          'Your data was copied as JSON. Paste it into a document you control.',
+      if (password == null || !mounted) return;
+      setState(() => exportStatus = 'Preparing your private archive…');
+      final bytes = await widget.apiClient.downloadPersonalData(password);
+      if (!mounted) return;
+      final date = DateTime.now().toIso8601String().substring(0, 10);
+      setState(() => exportStatus = 'Choose where to save your archive.');
+      final saved = await _exportChannel.invokeMethod<bool>('save', {
+        'filename': 'hearteli-data-export-$date.zip',
+        'bytes': bytes,
+      });
+      if (mounted) {
+        setState(
+          () => exportStatus = saved == true
+              ? 'Your data archive was saved.'
+              : 'Save cancelled. No archive was saved.',
         );
-    } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      }
+    } on ApiException catch (e) {
+      if (mounted)
+        setState(
+          () => exportStatus = switch (e.statusCode) {
+            401 => 'Sign in again before exporting your data.',
+            403 => 'Your current password did not match. Try again.',
+            413 => 'This archive is too large for an in-app download. Contact Hearteli support.',
+            429 => 'Too many attempts. Wait a few minutes and try again.',
+            _ => 'Could not prepare your archive. Check your connection and try again.',
+          },
+        );
+    } on PlatformException {
+      if (mounted)
+        setState(
+          () => exportStatus = 'Could not save your archive. Choose a writable location and try again.',
+        );
+    } catch (_) {
+      if (mounted)
+        setState(
+          () => exportStatus = 'Could not download your archive. Check your connection and try again.',
+        );
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -638,7 +775,7 @@ class _DataSettingsState extends State<DataSettings> {
           (_) => false,
         );
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       password.dispose();
       if (mounted) setState(() => busy = false);
@@ -661,9 +798,21 @@ class _DataSettingsState extends State<DataSettings> {
         ),
         const SizedBox(height: 18),
         FilledButton(
-          onPressed: busy ? null : export,
-          child: const Text('Copy my data as JSON'),
+          onPressed:
+              busy || kIsWeb || defaultTargetPlatform != TargetPlatform.android
+              ? null
+              : export,
+          child: const Text('Download my data (.zip)'),
         ),
+        if (kIsWeb || defaultTargetPlatform != TargetPlatform.android)
+          const Text(
+            'Private archive downloads are available in the Android app.',
+          ),
+        if (exportStatus != null)
+          Semantics(
+            liveRegion: true,
+            child: StatusPanel(message: exportStatus!),
+          ),
         const SizedBox(height: 25),
         const Text(
           'Delete account',
@@ -684,5 +833,63 @@ class _DataSettingsState extends State<DataSettings> {
         ],
       ],
     ),
+  );
+}
+
+class _ExportPasswordDialog extends StatefulWidget {
+  const _ExportPasswordDialog();
+
+  @override
+  State<_ExportPasswordDialog> createState() => _ExportPasswordDialogState();
+}
+
+class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
+  final password = TextEditingController();
+  final form = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text('Confirm your identity'),
+    content: Form(
+      key: form,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'The ZIP contains private Hearteli data and is not encrypted. Save it somewhere only you can access.',
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: password,
+            obscureText: true,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Current password'),
+            validator: (value) => value == null || value.isEmpty
+                ? 'Enter your current password.'
+                : null,
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () {
+          if (form.currentState!.validate())
+            Navigator.pop(context, password.text);
+        },
+        child: const Text('Prepare ZIP'),
+      ),
+    ],
   );
 }

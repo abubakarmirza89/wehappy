@@ -1,0 +1,16 @@
+{% extends 'work/base.html' %}
+{% block content %}
+<section class="card auth-card">
+{% if verified %}
+<h1>Email confirmed</h1><p>You can now sign in. If you received a Circle invitation, reopen its link to review it.</p>
+{% elif pending %}
+<h1>Check your email</h1><p>Open your verification link before signing in. If you did not receive it, use Resend verification in the Hearteli app.</p>
+{% elif valid %}
+<h1>Confirm your email</h1><p>Confirm to finish setting up your Hearteli account.</p>
+<form method="post">{% csrf_token %}<button>Verify email</button></form>
+{% else %}
+<h1>Verification link unavailable</h1><p>This link may have expired or already been used. If needed, request a new link in the app.</p>
+{% endif %}
+<p><a href="{% url 'hearteli-work-login' %}{% if circle_next %}?next={{ circle_next|urlencode }}{% endif %}">Sign in</a></p>
+</section>
+{% endblock %}

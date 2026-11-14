@@ -29,6 +29,16 @@ class MonetisationTests(TestCase):
         c.status='paused';c.save()
         data=self.search();self.assertEqual(data['sponsored'],[]);self.assertEqual(len(data['organic']),1)
         self.profile.refresh_from_db();self.assertTrue(self.profile.verified)
+    def test_verified_profile_requires_separate_directory_publication(self):
+        self.profile.directory_published_at = None
+        self.profile.save(update_fields=['directory_published_at'])
+        self.assertTrue(self.profile.verified)
+        self.assertEqual(self.search(), {'sponsored': [], 'organic': []})
+        result = self.api.post(f'/api/users/create-appointment/{self.therapist.pk}/',
+                               {'offering_id': self.option.pk, 'date': '2027-01-01',
+                                'time': '10:00', 'location': 'Online', 'reason': 'Support'})
+        self.assertEqual(result.status_code, 400)
+
     def test_expired_verification_hidden_even_with_active_sponsorship(self):
         self.campaign();self.profile.verification_expires_at=self.now-timedelta(seconds=1);self.profile.save()
         self.assertEqual(self.search(),{'sponsored':[],'organic':[]})
@@ -38,6 +48,47 @@ class MonetisationTests(TestCase):
         self.assertEqual(self.search(max_fee=50)['sponsored'],[])
         self.assertEqual(self.search(duration=60)['sponsored'],[])
         self.assertEqual(self.search(duration=45)['sponsored'][0]['id'],self.therapist.pk)
+    def test_directory_facets_remain_available_when_filters_match_nobody(self):
+        self.profile.specialties = 'Stress; Relationship support'
+        self.profile.save(update_fields=['specialties'])
+        initial = self.search(include_facets='true')
+        self.assertEqual(initial['count'], 1)
+        self.assertEqual(initial['specialties'], ['Relationship support', 'Stress'])
+        self.assertEqual(initial['durations'], [45])
+        self.assertIsNone(initial['next_after'])
+        later = self.search(include_facets='true', after=self.profile.pk)
+        self.assertEqual(later['organic'], [])
+        self.assertEqual(later['count'], 1)
+        none = self.search(include_facets='true', specialties='Stress', max_fee=50)
+        self.assertEqual(none['count'], 0)
+        self.assertEqual(none['specialties'], initial['specialties'])
+        self.assertEqual(self.search(include_facets='true', specialties='stress,Grief')['count'], 1)
+        self.assertEqual(self.search(include_facets='true', specialties='Stressful')['count'], 0)
+
+    def test_saved_market_and_cross_currency_cap_preserve_billing_amount(self):
+        from unittest.mock import patch
+        self.profile.directory_market = 'AU'
+        self.profile.save(update_fields=['directory_market'])
+        self.option.billing_currency = 'USD'
+        self.option.save(update_fields=['billing_currency'])
+        HearteliPreferences.objects.create(user=self.user, directory_market='AU')
+        rate = {'base': 'USD', 'quote': 'AUD', 'rate': '1.5', 'date': '2026-11-12', 'source': 'test'}
+        with patch('apps.users.marketplace.reference_rate', return_value=rate):
+            result = self.search(include_facets='true', fee_currency='AUD', max_fee='150')
+            self.assertEqual(result['market'], 'AU')
+            self.assertEqual(result['count'], 1)
+            option = result['organic'][0]['offerings'][0]
+            self.assertEqual(option['billing_currency'], 'USD')
+            self.assertEqual(option['fee'], '100.00')
+            self.assertEqual(option['estimate']['amount'], '150.00')
+            self.assertEqual(self.search(include_facets='true', fee_currency='AUD', max_fee='149')['count'], 0)
+            self.assertEqual(self.search(include_facets='true', market='GB')['market_count'], 0)
+        with patch('apps.users.marketplace.reference_rate', return_value=None):
+            result = self.search(include_facets='true', fee_currency='AUD')
+            self.assertTrue(result['missing_fee_rates'])
+            self.assertEqual(result['organic'][0]['offerings'][0]['fee'], '100.00')
+            self.assertEqual(self.search(include_facets='true', fee_currency='AUD', max_fee='150')['count'], 0)
+
     def test_fetch_is_not_impression_and_events_are_idempotent(self):
         c=self.campaign();data=self.search();ticket=data['sponsored'][0]['sponsor']['event_id']
         self.assertEqual(c.tickets.filter(shown_at__isnull=False).count(),0)
@@ -143,7 +194,9 @@ class MonetisationTests(TestCase):
         sub.period_end=self.now-timedelta(seconds=1);sub.save()
         self.assertEqual(len(self.api.get('/api/tracking/workspace-resources/').data),0)
         self.client.force_login(self.user)
-        self.assertEqual(self.client.get(f'/work/{w.pk}/pages/resources/').status_code,402)
+        response = self.client.get(f'/work/{w.pk}/pages/resources/')
+        self.assertContains(response, 'Subscribe to use workplace resources')
+        self.assertNotContains(response, 'Pilot resource')
         self.assertTrue(User.objects.get(pk=self.user.pk).is_active)
     def test_campaign_attribution_and_expiry_remove_placement(self):
         from apps.users.monetisation import attribute_booking

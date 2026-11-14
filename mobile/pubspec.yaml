@@ -1,7 +1,7 @@
 name: Hearteli
 description: Hearteli consent-based human support app
 publish_to: 'none'
-version: 1.0.4+6
+version: 1.0.6+10
 
 environment:
   sdk: '>=3.7.0 <4.0.0'
@@ -17,6 +17,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.5
+  intl: ^0.20.2
+  timezone: ^0.10.1
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.5.0
 

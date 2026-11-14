@@ -1,3 +1,4 @@
+from .directory_money import MARKETS, billing_currency
 import uuid
 from decimal import Decimal
 from .private_storage import CredentialStorage,SponsorCreativeStorage
@@ -16,6 +17,8 @@ from apps.users.managers import UserManager
 
 
 class User(AbstractUser):
+    email_verification_required = models.BooleanField(default=False, editable=False)
+    email_verified_at = models.DateTimeField(null=True, blank=True, editable=False)
     name = models.CharField(_("Name of User"), max_length=255, unique=True)
     email = models.EmailField(_("email address"), unique=True)
     phone_number = models.CharField(max_length=20)
@@ -47,6 +50,8 @@ class User(AbstractUser):
     
 
 class Therapist(models.Model):
+    directory_published_at = models.DateTimeField(null=True, blank=True, editable=False)
+    directory_market = models.CharField(max_length=2, blank=True, default='', choices=[(k, v[0]) for k, v in MARKETS.items()])
     practitioner_type=models.CharField(max_length=100,default='Therapist')
     registration_number=models.CharField(max_length=120,blank=True)
     public_reviews_permitted=models.BooleanField(default=False)
@@ -76,7 +81,7 @@ class Therapist(models.Model):
     def activity_status(self):return 'inactive' if (timezone.now()-self.last_activity_confirmation).days>=MarketplacePolicy.current().inactive_days else self.availability_status
     @property
     def searchable(self):
-        return self.user.is_active and self.user.is_therapist and self.verified and self.is_available and self.availability_status=='active' and (timezone.now()-self.last_activity_confirmation).days<MarketplacePolicy.current().inactive_days
+        return self.user.is_active and self.user.is_therapist and self.verified and self.directory_published_at is not None and self.is_available and self.availability_status=='active' and (timezone.now()-self.last_activity_confirmation).days<MarketplacePolicy.current().inactive_days
 
     user = models.OneToOneField(User, related_name="therapist_profile", on_delete=models.CASCADE)
     degrees = models.TextField(null=True, blank=True)
@@ -97,6 +102,8 @@ def create_therapist_profile(sender, instance, created, **kwargs):
 
 
 class Appointment(models.Model):
+    billing_currency = models.CharField(max_length=3, default=billing_currency, editable=False)
+    provider_timezone = models.CharField(max_length=64, blank=True, default='')
     booking_credential_verified=models.BooleanField(default=False)
     duration_minutes=models.PositiveIntegerField(default=60)
     acquisition_source=models.CharField(max_length=10,default='platform',choices=[('platform','Platform acquired'),('referral','Therapist referred')])
@@ -387,10 +394,11 @@ class MarketplacePolicy(models.Model):
 
 
 class SessionOffering(models.Model):
+    billing_currency = models.CharField(max_length=3, default=billing_currency, editable=False)
     therapist=models.ForeignKey(Therapist,on_delete=models.CASCADE,related_name='session_offerings')
     duration_minutes=models.PositiveIntegerField(validators=[MinValueValidator(10),MaxValueValidator(240)])
     fee=models.DecimalField(max_digits=10,decimal_places=2,validators=[MinValueValidator(Decimal('0.01'))])
-    def __str__(self):return f'{self.duration_minutes} minutes — USD {self.fee}'
+    def __str__(self):return f'{self.duration_minutes} minutes — {self.billing_currency} {self.fee}'
     approved=models.BooleanField(default=False)
     active=models.BooleanField(default=True)
     reviewed_by=models.ForeignKey(User,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')

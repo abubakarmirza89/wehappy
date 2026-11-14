@@ -137,11 +137,16 @@ class PracticeBillingTests(TestCase):
         self.plan.member_limit=1;self.plan.save()
         self.client.force_login(self.member)
         url=f'/work/{self.workspace.pk}/invite/'
-        self.assertEqual(self.client.post(url,{'email':self.other.email}).status_code,402)
+        blocked = self.client.post(url, {'email': self.other.email}, follow=True)
+        self.assertContains(blocked, 'An active workspace subscription is required')
+        self.assertFalse(WorkspaceMembership.objects.filter(workspace=self.workspace, user=self.other).exists())
         BusinessSubscription.objects.create(workspace=self.workspace,plan=self.plan,status='active',manual_status='active',period_end=timezone.now()+timedelta(days=1))
         WorkspaceMembership.objects.create(workspace=self.workspace,user=self.member,role='owner',status='approved')
         self.assertEqual(self.client.post(url,{'email':self.other.email}).status_code,302)
-        self.assertEqual(self.client.post(url,{'email':self.therapist.email}).status_code,402)
+        self.assertTrue(WorkspaceMembership.objects.filter(workspace=self.workspace, user=self.other).exists())
+        full = self.client.post(url, {'email': self.therapist.email}, follow=True)
+        self.assertContains(full, 'Your plan member limit is reached')
+        self.assertFalse(WorkspaceMembership.objects.filter(workspace=self.workspace, user=self.therapist).exists())
     def test_checkout_unconfigured_does_not_create_earnings(self):
         self.assertEqual(self.api.post(f'/api/users/appointment/{self.a.pk}/checkout/').status_code,400)
         self.assertEqual(TherapyLedger.objects.count(),0)

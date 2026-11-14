@@ -107,6 +107,7 @@ def register(request):
                         email=form.cleaned_data['email'],
                         phone_number=form.cleaned_data['phone_number'],
                         password=form.cleaned_data['password'],
+                        email_verification_required=True,
                     )
                     if invitation:
                         WorkspaceMembership.objects.get_or_create(
@@ -121,8 +122,9 @@ def register(request):
                         invitation.claimed_at = timezone.now()
                         invitation.save(update_fields=['claimed_at'])
             if not form.errors:
-                login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-                return redirect('hearteli-work-index')
+                from apps.users.email_verification import queue_verification
+                queue_verification(user)
+                return redirect('hearteli-verification-pending')
 
     return render(request, 'work/register.html', {
         'form': form,

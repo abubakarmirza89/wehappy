@@ -3,6 +3,8 @@ import 'dart:developer' as developer;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../network/api_client.dart';
 
@@ -15,10 +17,19 @@ class FirebaseService {
   static void Function(int)? _onNudge;
   static void Function(String, String)? _onForegroundNotification;
   static bool _deviceRegistrationEnabled = true;
+  static final _pushRegistration = ValueNotifier<bool?>(null);
+  static ValueListenable<bool?> get pushRegistration => _pushRegistration;
+  static const _notificationSettings = MethodChannel(
+    'hearteli/notification_settings',
+  );
+  static bool get canOpenDeviceSettings =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  static Future<void> openDeviceSettings() =>
+      _notificationSettings.invokeMethod<void>('open');
 
   Future<bool> initialize({
     bool requestPermission = true,
-    bool registerDevice = true,
     void Function(int)? onNudge,
     void Function(String, String)? onForegroundNotification,
   }) async {
@@ -30,7 +41,6 @@ class FirebaseService {
       if (onForegroundNotification != null) {
         _onForegroundNotification = onForegroundNotification;
       }
-      _deviceRegistrationEnabled = registerDevice;
       final permission = requestPermission
           ? await FirebaseMessaging.instance.requestPermission(
               alert: true,
@@ -41,19 +51,27 @@ class FirebaseService {
       final permissionGranted =
           permission.authorizationStatus == AuthorizationStatus.authorized ||
           permission.authorizationStatus == AuthorizationStatus.provisional;
+      var registered = false;
       if (registerDevice && permissionGranted) {
         final token = await FirebaseMessaging.instance.getToken();
-        if (token != null && token.isNotEmpty) await registerToken(token);
+        if (token != null && token.isNotEmpty) {
+          await registerToken(token);
+          registered = true;
+        }
       } else {
         await unregisterCurrentToken();
       }
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && token.isNotEmpty) await registerToken(token);
       await _tokens?.cancel();
       _tokens = FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
         try {
           if (_deviceRegistrationEnabled) {
             await registerToken(token);
+            _pushRegistration.value = true;
           }
         } catch (error, stackTrace) {
+          if (_deviceRegistrationEnabled) _pushRegistration.value = false;
           developer.log(
             'Unable to register refreshed Firebase token',
             name: 'hearteli.notifications',
@@ -74,8 +92,12 @@ class FirebaseService {
       });
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) openMessage(initial);
-      return registerDevice && permissionGranted;
+      _pushRegistration.value = registerDevice && permissionGranted
+          ? registered
+          : null;
+      return registered;
     } catch (error, stackTrace) {
+      _pushRegistration.value = registerDevice ? false : null;
       developer.log(
         'Firebase notification initialization failed',
         name: 'hearteli.notifications',
@@ -103,6 +125,7 @@ class FirebaseService {
     await _tokens?.cancel();
     await _opens?.cancel();
     await _messages?.cancel();
+    _pushRegistration.value = null;
     _onNudge = null;
     _onForegroundNotification = null;
   }
@@ -119,15 +142,27 @@ class FirebaseService {
   }
 
   Future<void> unregisterCurrentToken() async {
+    final wasEnabled = _deviceRegistrationEnabled;
     _deviceRegistrationEnabled = false;
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token != null && token.isNotEmpty) await unregisterToken(token);
+    try {
+      if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && token.isNotEmpty) await unregisterToken(token);
+      _pushRegistration.value = null;
+    } catch (_) {
+      _deviceRegistrationEnabled = wasEnabled;
+      rethrow;
+    }
   }
 
   Future<bool> notificationPermissionGranted() async {
+    if (canOpenDeviceSettings) {
+      final enabled = await _notificationSettings.invokeMethod<bool>('enabled');
+      if (enabled != null) return enabled;
+    }
     if (Firebase.apps.isEmpty) await Firebase.initializeApp();
-    final permission =
-        await FirebaseMessaging.instance.getNotificationSettings();
+    final permission = await FirebaseMessaging.instance
+        .getNotificationSettings();
     return permission.authorizationStatus == AuthorizationStatus.authorized ||
         permission.authorizationStatus == AuthorizationStatus.provisional;
   }
