@@ -10,29 +10,29 @@ from .models import TherapistApplication, Appointment, AppointmentMessage, User
 from .therapy_services import balance
 
 
-class ApplicationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TherapistApplication
-        fields = ['bio','credentials','license_number','location','modalities','status','review_note','updated_at']
-        read_only_fields = ['status','review_note','updated_at']
-        extra_kwargs = {f:{'allow_blank':False} for f in ['bio','credentials','license_number','location','modalities']}
+APPLICATIONS_PAUSED = (
+    'New therapist applications are not available while we update professional verification. '
+    'Please check back here later.'
+)
 
 
 class ApplicationView(APIView):
     permission_classes = [IsAuthenticated]
+
     def get(self, request):
         app = TherapistApplication.objects.filter(user=request.user).first()
-        return Response(ApplicationSerializer(app).data if app else {'status':'not_applied'})
+        return Response({
+            'status': app.status if app else 'not_applied',
+            'updated_at': app.updated_at if app else None,
+            'applications_open': False,
+        })
+
     def post(self, request):
-        with transaction.atomic():
-            User.objects.select_for_update().get(pk=request.user.pk)
-            app = TherapistApplication.objects.filter(user=request.user).first()
-            if app and app.status in ('pending','approved'):
-                raise ValidationError('Your application is already under review or approved.')
-            serializer = ApplicationSerializer(app, data=request.data)
-            serializer.is_valid(raise_exception=True)
-            serializer.save(user=request.user, status='pending', review_note='')
-        return Response(serializer.data, status=201)
+        # The legacy form cannot verify jurisdiction-specific evidence and consent.
+        return Response({
+            'code': 'applications_paused',
+            'detail': APPLICATIONS_PAUSED,
+        }, status=409)
 
 
 class PracticeProfileSerializer(serializers.ModelSerializer):

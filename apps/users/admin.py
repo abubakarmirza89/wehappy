@@ -226,33 +226,23 @@ class EmailDeliveryAdmin(admin.ModelAdmin):
 admin.site.register(Notification)
 
 from .models import TherapistApplication, TherapyLedger, BillingPlan, BusinessSubscription, PaymentEvent
-from django.db import transaction
 
 @admin.register(TherapistApplication)
 class TherapistApplicationAdmin(admin.ModelAdmin):
     list_display = ['user','status','license_number','location','updated_at']
     readonly_fields = ['user','status']
-    actions = ['approve','reject']
-    @admin.action(description='Approve selected therapist applications')
-    def approve(self, request, queryset):
-        from .communications import queue_email
-        for item in queryset:
-            with transaction.atomic():
-                app = TherapistApplication.objects.select_for_update().get(pk=item.pk)
-                if app.status != 'pending':
-                    continue
-                app.status='approved'; app.save()
-                app.user.is_therapist=True; app.user.save(update_fields=['is_therapist'])
-                profile, _ = Therapist.objects.get_or_create(user=app.user)
-                profile.is_active=True; profile.degrees=app.credentials; profile.save()
-                queue_email(app.user,'application','Your Hearteli therapist application was approved',
-                    'Your application was approved. Sign in and complete your practice profile.',key=f'application-approved:{app.pk}',path='/practice/')
-    @admin.action(description='Reject selected applications (add a review note first)')
-    def reject(self, request, queryset):
-        for app in queryset.filter(status='pending').exclude(review_note=''):
-            app.status='rejected'; app.save()
-            from .communications import queue_email
-            queue_email(app.user,'application','Your Hearteli therapist application update','Your application was reviewed. Sign in to read the review note and next steps.',key=f'application-review:{app.pk}:{app.updated_at.isoformat()}',path='/practice/apply/')
+    actions = None
+
+    # Retain historical records without allowing this legacy queue to grant roles.
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(TherapyLedger)
 class TherapyLedgerAdmin(admin.ModelAdmin):

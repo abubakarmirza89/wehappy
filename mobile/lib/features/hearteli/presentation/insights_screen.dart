@@ -1,3 +1,4 @@
+import '../../../core/validation/form_feedback.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
@@ -45,7 +46,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
     } catch (e) {
       if (mounted)
         setState(() {
-          error = '$e';
+          error = formRequestError(e);
           loading = false;
         });
     }
@@ -291,7 +292,7 @@ class _CheckInDetailState extends State<CheckInDetail> {
           'Private note saved. Previous nudge messages are unchanged.',
         );
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) showCalmMessage(context, formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -325,7 +326,7 @@ class _CheckInDetailState extends State<CheckInDetail> {
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) showCalmMessage(context, formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }

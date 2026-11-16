@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/validation/form_feedback.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/widgets/loading_view.dart';
 
@@ -27,6 +28,8 @@ class WorkspaceDetailScreen extends StatefulWidget {
 class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
   late Future<Map<String, dynamic>> _future;
   final TextEditingController _inviteController = TextEditingController();
+  final _inviteFocus = FocusNode();
+  String? _inviteError;
   bool _isInviting = false;
 
   @override
@@ -57,28 +60,25 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
   }
 
   Future<void> _inviteMembers() async {
-    final rawValue = _inviteController.text.trim();
-    if (rawValue.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter at least one email address.')),
-      );
-      return;
-    }
-
-    final emails = rawValue
+    if (_isInviting) return;
+    final emails = _inviteController.text
         .split(',')
         .map((value) => value.trim())
         .where((value) => value.isNotEmpty)
         .toList();
-
-    if (emails.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No valid emails found.')),
-      );
+    final invalid = emails.isEmpty
+        ? 'Enter at least one email address.'
+        : emails.any((email) => emailFieldError(email) != null)
+            ? 'Check each email address. Separate addresses with commas.'
+            : null;
+    setState(() {
+      _inviteError = invalid;
+      _isInviting = invalid == null;
+    });
+    if (invalid != null) {
+      focusInvalidField(_inviteFocus);
       return;
     }
-
-    setState(() => _isInviting = true);
 
     try {
       final response = await widget.apiClient.post(
@@ -92,6 +92,15 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
 
       if (!mounted) return;
 
+      if (invitedCount == 0) {
+        setState(() {
+          _isInviting = false;
+          _inviteError = 'No invitations were sent. Check the addresses and whether these people are already members.';
+        });
+        focusInvalidField(_inviteFocus);
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Invited $invitedCount member(s). $skippedText')),
       );
@@ -103,16 +112,19 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _isInviting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Invite failed: $error')),
-      );
+      setState(() {
+        _isInviting = false;
+        _inviteError = formRequestError(error,
+            invalid: 'Check the email addresses and try again.');
+      });
+      focusInvalidField(_inviteFocus);
     }
   }
 
   @override
   void dispose() {
     _inviteController.dispose();
+    _inviteFocus.dispose();
     super.dispose();
   }
 
@@ -302,9 +314,17 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
                             controller: _inviteController,
                             minLines: 1,
                             maxLines: 3,
-                            decoration: const InputDecoration(
+                            focusNode: _inviteFocus,
+                            readOnly: _isInviting,
+                            keyboardType: TextInputType.emailAddress,
+                            onChanged: (_) {
+                              if (_inviteError != null) setState(() => _inviteError = null);
+                            },
+                            decoration: InputDecoration(
+                              labelText: 'Member email addresses (required)',
+                              error: inlineFieldError(_inviteError),
                               hintText: 'email1@example.com, email2@example.com',
-                              border: OutlineInputBorder(),
+                              border: const OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 12),

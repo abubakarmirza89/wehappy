@@ -44,7 +44,7 @@ class _WorkScreenState extends State<WorkScreen> {
     } catch (e) {
       if (mounted)
         setState(() {
-          error = '$e';
+          error = formRequestError(e);
           loading = false;
         });
     }
@@ -167,47 +167,25 @@ class _WorkDetailState extends State<WorkDetail> {
       if (mounted)
         setState(() => dashboard = Map<String, dynamic>.from(data as Map));
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
   Future<void> invite() async {
-    final email = TextEditingController();
-    await showDialog(
+    final sent = await showDialog<bool>(
       context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('Invite member'),
-        content: TextField(
-          controller: email,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(labelText: 'Existing member email'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialog),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              try {
-                await widget.apiClient.post(
-                  '/api/tracking/workspaces/${widget.workspace['id']}/bulk_invite/',
-                  body: {
-                    'emails': [email.text.trim()],
-                  },
-                );
-                if (dialog.mounted) Navigator.pop(dialog);
-                load();
-              } catch (e) {
-                if (dialog.mounted) showCalmMessage(dialog, '$e');
-              }
-            },
-            child: const Text('Invite'),
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (_) => EmailInviteDialog(
+        onInvite: (email) async {
+          final result = await widget.apiClient.post(
+            '/api/tracking/workspaces/${widget.workspace['id']}/bulk_invite/',
+            body: {'emails': [email]},
+          );
+          return result is Map && (result['invited_count'] as num? ?? 0) > 0;
+        },
       ),
     );
-    email.dispose();
+    if (mounted && sent == true) await load();
   }
 
   Future<void> changeRole(Map member, String role) async {
@@ -218,7 +196,7 @@ class _WorkDetailState extends State<WorkDetail> {
       );
       await load();
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) showCalmMessage(context, formRequestError(e));
     }
   }
 

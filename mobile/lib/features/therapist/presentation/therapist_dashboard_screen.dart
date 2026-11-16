@@ -1,3 +1,4 @@
+import '../../../core/validation/form_feedback.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/appointments/appointment_time.dart';
@@ -59,7 +60,7 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
         setState(() => _future = _load());
       }
     } catch (error) {
-      if (mounted) AppToast.error(context, '$error');
+      if (mounted) AppToast.error(context, formRequestError(error));
     }
   }
 
@@ -136,7 +137,7 @@ class _TherapistDashboardScreenState extends State<TherapistDashboardScreen> {
                     );
                     if (mounted) setState(() => _future = _load());
                   } catch (error) {
-                    if (mounted) AppToast.error(context, '$error');
+                    if (mounted) AppToast.error(context, formRequestError(error));
                   }
                 },
                 title: const Text('Available for new clients'),

@@ -82,64 +82,30 @@ class TherapistApplicationScreen extends StatefulWidget {
 }
 
 class _TherapistApplicationState extends State<TherapistApplicationScreen> {
-  final form = GlobalKey<FormState>();
-  final fields = {
-    for (final key in [
-      'bio',
-      'credentials',
-      'license_number',
-      'location',
-      'modalities',
-    ])
-      key: TextEditingController(),
-  };
-  static const labels = {
-    'bio': 'Professional bio',
-    'credentials': 'Professional qualifications',
-    'license_number': 'Registration or licence number',
-    'location': 'Jurisdiction of practice',
-    'modalities': 'Service modes or approaches',
-  };
-  Map<String, dynamic>? application;
+  String? status;
   String? error;
-  bool busy = false;
+  bool loading = true;
+
   @override
   void initState() {
     super.initState();
     load();
   }
 
-  @override
-  void dispose() {
-    for (final c in fields.values) c.dispose();
-    super.dispose();
-  }
-
   Future<void> load() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
     try {
       final value = await widget.apiClient.get(
         '/api/users/therapist/application/',
       );
-      if (mounted)
-        setState(() => application = Map<String, dynamic>.from(value));
-    } catch (e) {
-      if (mounted) setState(() => error = formRequestError(e));
-    }
-  }
-
-  Future<void> submit() async {
-    if (busy || !form.currentState!.validate()) return;
-    setState(() { busy = true; error = null; });
-    try {
-      await widget.apiClient.post(
-        '/api/users/therapist/application/',
-        body: fields.map((key, c) => MapEntry(key, c.text.trim())),
-      );
-      await load();
+      if (mounted) setState(() => status = value['status'] as String?);
     } catch (e) {
       if (mounted) setState(() => error = formRequestError(e));
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -152,49 +118,23 @@ class _TherapistApplicationState extends State<TherapistApplicationScreen> {
         const PageIntro(
           title: 'Bring your practice to Hearteli',
           subtitle:
-              'Submit your professional details for review. Submission does not publish your profile or enable bookings. Verification and publication are separate decisions.',
+              'New therapist applications are not available while we update professional verification. Please check back here later.',
         ),
+        if (loading) const Center(child: CircularProgressIndicator()),
         if (error != null)
           StatusPanel(message: error!, action: 'Retry', onAction: load),
-        if (application == null && error == null)
-          const Center(child: CircularProgressIndicator()),
-        if (application != null) ...[
-          Text('Status: ${application!['status']}'),
-          if ('${application!['review_note'] ?? ''}'.isNotEmpty)
-            Text('${application!['review_note']}'),
-          if (application!['status'] == 'approved')
-            const Text(
-              'Your application is approved. Sign out and sign back in to open your practice workspace.',
-            ),
-          if (['not_applied', 'rejected'].contains(application!['status']))
-            Form(
-              key: form,
-              child: Column(
-                children: [
-                  for (final entry in fields.entries)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: TextFormField(
-                        controller: entry.value,
-                        maxLength: const {'bio': 2000, 'credentials': 500}[entry.key] ?? 120,
-                        decoration: InputDecoration(
-                          labelText: '${labels[entry.key]} (required)',
-                        ),
-                        validator:
-                            (v) =>
-                                v == null || v.trim().isEmpty
-                                    ? 'Required'
-                                    : null,
-                      ),
-                    ),
-                  FilledButton(
-                    onPressed: busy ? null : submit,
-                    child: Text(busy ? 'Submitting…' : 'Submit for review'),
-                  ),
-                ],
-              ),
-            ),
-        ],
+        if (!loading &&
+            error == null &&
+            const ['approved', 'pending', 'rejected'].contains(status))
+          StatusPanel(
+            message: switch (status) {
+              'approved' =>
+                'Application approved. Credential verification and profile publication are separate steps.',
+              'pending' =>
+                'Application received through the previous process. It does not grant verification or permission to accept bookings.',
+              _ => 'Previous application not approved.',
+            },
+          ),
       ],
     ),
   );
@@ -251,7 +191,7 @@ class _PracticeProfileState extends State<PracticeProfile> {
     } catch (e) {
       if (mounted)
         setState(() {
-          error = '$e';
+          error = formRequestError(e);
           loading = false;
         });
     }
@@ -271,7 +211,7 @@ class _PracticeProfileState extends State<PracticeProfile> {
       );
       if (mounted) showCalmMessage(context, 'Practice profile saved.');
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -338,7 +278,7 @@ class _PracticeProfileState extends State<PracticeProfile> {
                 'Availability confirmed. Visibility also requires valid credentials.',
               );
           } catch (e) {
-            if (mounted) showCalmMessage(context, '$e');
+            if (mounted) showCalmMessage(context, formRequestError(e));
           }
         },
         child: const Text("Yes, I'm still accepting clients"),
@@ -374,7 +314,7 @@ class _PracticeProfileState extends State<PracticeProfile> {
                 'Session option submitted for approval.',
               );
           } catch (e) {
-            if (mounted) showCalmMessage(context, '$e');
+            if (mounted) showCalmMessage(context, formRequestError(e));
           }
         },
         child: const Text('Submit session option for approval'),
@@ -427,7 +367,7 @@ class _AppointmentChatState extends State<AppointmentChatScreen> {
           error = null;
         });
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
@@ -442,7 +382,7 @@ class _AppointmentChatState extends State<AppointmentChatScreen> {
       text.clear();
       await load();
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }

@@ -38,7 +38,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     } catch (e) {
       if (mounted)
         setState(() {
-          error = '$e';
+          error = formRequestError(e);
           loading = false;
         });
     }
@@ -184,7 +184,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
         );
         await load();
       } catch (e) {
-        if (mounted) showCalmMessage(context, '$e');
+        if (mounted) showCalmMessage(context, formRequestError(e));
       }
     }
     comment.dispose();
@@ -282,7 +282,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                                   'Could not open secure payment.',
                                 );
                             } catch (e) {
-                              if (mounted) showCalmMessage(context, '$e');
+                              if (mounted) showCalmMessage(context, formRequestError(e));
                             }
                           },
                           child: const Text('Pay securely'),
@@ -298,7 +298,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                               );
                               await load();
                             } catch (e) {
-                              if (mounted) showCalmMessage(context, '$e');
+                              if (mounted) showCalmMessage(context, formRequestError(e));
                             }
                           },
                           itemBuilder: (_) => raw['status'] == 'BOOKED'

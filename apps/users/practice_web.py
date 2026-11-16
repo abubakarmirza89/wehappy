@@ -12,11 +12,6 @@ from django.utils import timezone
 from .models import TherapistApplication,Therapist,Appointment,AppointmentMessage,WithdrawalRequest,User
 from .therapy_services import balance
 
-class ApplicationForm(forms.ModelForm):
-    class Meta:
-        model=TherapistApplication
-        fields=['bio','credentials','license_number','location','modalities']
-
 class ProfileForm(forms.ModelForm):
     class Meta:
         model=Therapist
@@ -24,16 +19,14 @@ class ProfileForm(forms.ModelForm):
 
 @login_required(login_url='/practice/login/')
 def apply(request):
-    app=TherapistApplication.objects.filter(user=request.user).first()
-    form=ApplicationForm(request.POST or None,instance=app)
-    if request.method=='POST' and (not app or app.status=='rejected') and form.is_valid():
-        with transaction.atomic():
-            User.objects.select_for_update().get(pk=request.user.pk)
-            current=TherapistApplication.objects.filter(user=request.user).first()
-            if current and current.status in ('pending','approved'): return redirect('practice-apply')
-            obj=form.save(commit=False);obj.user=request.user;obj.status='pending';obj.review_note='';obj.save()
-        return redirect('practice-apply')
-    return render(request,'practice/apply.html',{'form':form,'application':app})
+    from .practice import APPLICATIONS_PAUSED
+
+    application = TherapistApplication.objects.filter(user=request.user).first()
+    return render(request, 'practice/apply.html', {
+        'application': application,
+        'applications_paused': APPLICATIONS_PAUSED,
+    }, status=409 if request.method == 'POST' else 200)
+
 
 @login_required(login_url='/practice/login/')
 def dashboard(request):

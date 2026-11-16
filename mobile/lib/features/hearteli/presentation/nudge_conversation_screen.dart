@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/validation/form_feedback.dart';
 import 'components.dart';
 import 'feel_better_screen.dart';
 
@@ -13,11 +14,13 @@ class NudgeConversationScreen extends StatefulWidget {
 }
 class _NudgeConversationScreenState extends State<NudgeConversationScreen> {
   final message = TextEditingController();
+  final messageFocus = FocusNode();
+  String? sendError;
   List<dynamic> messages = [];
   bool busy = false;
   String? error;
   @override void initState() { super.initState(); load(); }
-  @override void dispose() { message.dispose(); super.dispose(); }
+  @override void dispose() { message.dispose(); messageFocus.dispose(); super.dispose(); }
   Future<void> load() async {
     try {
       final data = await widget.apiClient.get('/api/tracking/hearteli/nudges/${widget.nudgeId}/messages/');
@@ -26,12 +29,25 @@ class _NudgeConversationScreenState extends State<NudgeConversationScreen> {
   }
   Future<void> send() async {
     final body = message.text.trim();
-    if (body.isEmpty || busy) return;
-    setState(() => busy = true);
+    if (busy) return;
+    if (body.isEmpty) {
+      setState(() => sendError = 'Write a message before sending.');
+      focusInvalidField(messageFocus);
+      return;
+    }
+    setState(() { busy = true; sendError = null; });
     try {
       await widget.apiClient.post('/api/tracking/hearteli/nudges/${widget.nudgeId}/messages/', body: {'body': body});
+      if (!mounted) return;
       message.clear(); await load();
-    } catch (e) { if (mounted) showCalmMessage(context, '$e'); }
+    } catch (e) {
+      if (mounted) {
+        setState(() => sendError = formRequestError(e,
+          invalid: 'Check your message and try again.',
+          missing: 'This conversation is no longer available.'));
+        focusInvalidField(messageFocus);
+      }
+    }
     finally { if (mounted) setState(() => busy = false); }
   }
   @override Widget build(BuildContext context) => Scaffold(
@@ -61,9 +77,14 @@ class _NudgeConversationScreenState extends State<NudgeConversationScreen> {
       ]))),
       if (error == null) Padding(padding: screenPadding, child: Row(children: [
         Expanded(child: TextField(controller: message, maxLength: 1000, minLines: 1, maxLines: 3,
-          decoration: const InputDecoration(hintText: 'Type a message…', counterText: ''))),
+          focusNode: messageFocus, readOnly: busy,
+          onChanged: (_) {
+            if (sendError != null) setState(() => sendError = null);
+          },
+          decoration: InputDecoration(labelText: 'Message', counterText: '',
+            error: inlineFieldError(sendError)))),
         const SizedBox(width: 8),
-        IconButton.filled(onPressed: busy ? null : send, icon: const Icon(Icons.send), tooltip: 'Send message'),
+        IconButton.filled(onPressed: busy ? null : send, icon: busy ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send), tooltip: busy ? 'Sending message' : 'Send message'),
       ])),
     ])),
   );

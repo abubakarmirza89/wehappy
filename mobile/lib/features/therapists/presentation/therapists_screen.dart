@@ -1,3 +1,4 @@
+import '../../../core/validation/form_feedback.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
@@ -102,7 +103,7 @@ class _TherapistsScreenState extends State<TherapistsScreen> {
                           AppToast.success(context, 'Appointment request created.');
                         }
                       } catch (error) {
-                        if (sheetContext.mounted) AppToast.error(sheetContext, '$error');
+                        if (sheetContext.mounted) AppToast.error(sheetContext, formRequestError(error));
                       }
                     },
                     child: const Text('Confirm appointment'),
