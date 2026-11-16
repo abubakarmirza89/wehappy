@@ -1,7 +1,7 @@
 """Durable transactional email: provider acceptance is not proof of delivery/read."""
 from datetime import timedelta
 from urllib.parse import urlencode, urljoin
-from zoneinfo import ZoneInfo
+from .notification_time import notification_zone
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMultiAlternatives
@@ -209,7 +209,7 @@ def delivery_allowed(delivery):
         return 'suppress'
     if delivery.kind == 'daily_prompt':
         pref, _ = HearteliPreferences.objects.get_or_create(user=user)
-        local_date = timezone.now().astimezone(ZoneInfo(pref.timezone_name)).date()
+        local_date = timezone.now().astimezone(notification_zone(pref.timezone_name)).date()
         if delivery.event_key != f'daily-prompt:{user.pk}:{local_date.isoformat()}':
             return 'suppress'
         if not pref.reminder_enabled or MoodCheckIn.objects.filter(user=user, date=local_date).exists():
@@ -251,7 +251,7 @@ def delivery_allowed(delivery):
             return 'suppress'
     if delivery.kind == 'reminder':
         from apps.tracking.models import MoodCheckIn
-        local_date = timezone.now().astimezone(ZoneInfo(pref.timezone_name)).date()
+        local_date = timezone.now().astimezone(notification_zone(pref.timezone_name)).date()
         if not pref.reminder_enabled or not delivery.event_key.endswith(str(local_date)) or MoodCheckIn.objects.filter(user=user, date=local_date).exists():
             return 'suppress'
     if delivery.kind == 'support_outcome':
@@ -261,7 +261,7 @@ def delivery_allowed(delivery):
     if delivery.kind == 'appointment_reminder':
         if not Appointment.objects.filter(pk=delivery.target_id, status='BOOKED').exists():
             return 'suppress'
-    local = timezone.now().astimezone(ZoneInfo(pref.timezone_name)).time().replace(tzinfo=None)
+    local = timezone.now().astimezone(notification_zone(pref.timezone_name)).time().replace(tzinfo=None)
     if pref.quiet_start is not None and pref.quiet_end is not None:
         start, end = pref.quiet_start, pref.quiet_end
         quiet = start <= local < end if start < end else local >= start or local < end

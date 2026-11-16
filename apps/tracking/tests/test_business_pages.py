@@ -142,3 +142,43 @@ class BusinessPageTests(TestCase):
                 self.assertContains(response, 'Your subscription hasn’t activated yet')
                 self.assertContains(response, 'Check payment status')
                 self.assertNotContains(response, 'type="submit">Subscribe')
+
+    def test_verified_checkout_recovers_workspace_entitlement_without_webhook(self):
+        from datetime import timedelta
+        from unittest.mock import patch
+
+        from django.utils import timezone
+
+        sub = BusinessSubscription.objects.get(workspace=self.workspace)
+        sub.period_end = None
+        sub.status = 'incomplete'
+        sub.checkout_session_id = 'cs_test_completed'
+        sub.save()
+        session = {
+            'id': sub.checkout_session_id, 'status': 'complete', 'mode': 'subscription',
+            'payment_status': 'paid', 'customer': 'cus_approved', 'subscription': 'sub_approved',
+            'client_reference_id': str(self.workspace.pk),
+        }
+        remote = {
+            'id': 'sub_approved', 'customer': 'cus_approved', 'status': 'active',
+            'metadata': {'workspace_id': str(self.workspace.pk), 'billing_plan_id': str(sub.plan_id)},
+            'items': {'data': [{'price': {'id': sub.plan.stripe_price_id},
+                               'current_period_end': int((timezone.now() + timedelta(days=30)).timestamp())}]},
+            'currency': sub.plan.currency.lower(),
+        }
+        billing = reverse('business-billing', args=[self.workspace.pk])
+        with self.settings(STRIPE_SECRET_KEY='sk_test_configured', STRIPE_WEBHOOK_SECRET='whsec_test'):
+            with patch('apps.users.billing.stripe.checkout.Session.retrieve', return_value=session), patch(
+                'apps.users.billing.stripe.Subscription.retrieve', return_value=remote,
+            ) as retrieve:
+                session['client_reference_id'] = 'different-workplace'
+                self.client.get(billing)
+                retrieve.assert_not_called()
+                session['client_reference_id'] = str(self.workspace.pk)
+                self.client.get(billing)
+                retrieve.assert_called_once()
+                self.client.get(billing)
+                retrieve.assert_called_once()
+        sub.refresh_from_db()
+        self.assertTrue(sub.entitled)
+        self.assertContains(self.client.get(self.url('resources')), 'Publish resource')

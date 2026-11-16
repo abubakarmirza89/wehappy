@@ -23,7 +23,7 @@ class AppointmentClock {
     final prefs = await apiClient.get('/api/tracking/hearteli/preferences/');
     final zone = prefs['timezone_name'];
     return AppointmentClock.forZone(
-      prefs['timezone_selected'] == true || zone != 'UTC' ? zone : null,
+      prefs['timezone_selected'] == true ? zone : null,
     );
   }
 

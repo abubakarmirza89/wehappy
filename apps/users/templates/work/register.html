@@ -39,7 +39,7 @@
       <label for="id_confirm_password">Confirm password</label>
       <input id="id_confirm_password" name="confirm_password" type="password" autocomplete="new-password" required>
       {{ form.confirm_password.errors }}
-      <button class="full" type="submit">Create account</button>
+      {% include 'registration_policy_notice.html' %}<button class="full" type="submit">Create account</button>
     </form>
     <p class="small">Account creation does not reveal anyone else's data.</p>
     {% if not invitation %}<p class="small">Are you a therapist? <a href="{% url 'practice-signup' %}">Create a therapist account and apply</a>.</p>{% endif %}

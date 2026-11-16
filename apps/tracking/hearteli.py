@@ -4,10 +4,14 @@ Every nudge is a deliberately confirmed, bounded snapshot. Check-in notes are
 never serialized to recipients or copied into the nudge payload.
 """
 import hashlib
+import logging
+from uuid import uuid4
 import secrets
 from smtplib import SMTPException
 from datetime import timedelta
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
+from django.db.models.deletion import ProtectedError
+from rest_framework.throttling import UserRateThrottle
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers, viewsets, permissions, status
@@ -451,10 +455,25 @@ class OutcomeViewSet(viewsets.ModelViewSet):
 
 
 class PreferencesSerializer(serializers.ModelSerializer):
+    timezone_mode = serializers.ChoiceField(choices=['device', 'manual'], required=False, write_only=True)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['timezone_mode'] = 'manual' if instance.timezone_selected else 'device'
+        return data
+
+    def update(self, instance, validated_data):
+        mode = validated_data.pop('timezone_mode', None)
+        if mode is not None:
+            validated_data['timezone_selected'] = mode == 'manual'
+        elif 'timezone_name' in validated_data:  # compatibility with older clients
+            validated_data['timezone_selected'] = True
+        return super().update(instance, validated_data)
+
     class Meta:
         model = HearteliPreferences
         fields = ['use_contexts', 'reminder_enabled', 'nudge_notifications', 'quiet_start',
-                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'timezone_selected', 'reminder_time', 'sponsor_opt_in', 'directory_market']
+                  'quiet_end', 'rich_lock_preview', 'email_notifications', 'timezone_name', 'timezone_selected', 'timezone_mode', 'reminder_time', 'sponsor_opt_in', 'directory_market']
         read_only_fields = ['timezone_selected']
 
     def validate_directory_market(self, value):
@@ -464,14 +483,17 @@ class PreferencesSerializer(serializers.ModelSerializer):
         return value
 
     def validate_timezone_name(self, value):
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-        try:
-            ZoneInfo(value)
-        except (ZoneInfoNotFoundError, ValueError):
-            raise ValidationError('Choose a valid IANA timezone, for example Asia/Karachi.')
+        from apps.users.notification_time import notification_timezone_names
+
+        if value in ('Etc/UTC', 'Etc/GMT', 'GMT'):
+            return 'UTC'
+        if value not in notification_timezone_names():
+            raise ValidationError('Choose a listed IANA timezone, for example Australia/Sydney.')
         return value
 
     def validate(self, attrs):
+        if 'timezone_mode' in attrs and 'timezone_name' not in attrs:
+            raise ValidationError({'timezone_name': 'Choose a timezone before changing modes.'})
         start = attrs.get('quiet_start', getattr(self.instance, 'quiet_start', None))
         end = attrs.get('quiet_end', getattr(self.instance, 'quiet_end', None))
         if (start is None) != (end is None) or (start is not None and start == end):
@@ -486,13 +508,34 @@ class PreferencesViewSet(viewsets.ViewSet):
         obj, _ = HearteliPreferences.objects.get_or_create(user=request.user)
         return Response(PreferencesSerializer(obj).data)
 
+    @action(detail=False, methods=['get'])
+    def timezones(self, request):
+        from apps.users.notification_time import notification_timezone_names
+
+        return Response(sorted(notification_timezone_names()))
+
     @action(detail=False, methods=['patch'])
+    @transaction.atomic
+    def device_timezone(self, request):
+        obj, _ = HearteliPreferences.objects.select_for_update().get_or_create(user=request.user)
+        if not obj.timezone_selected:
+            serializer = PreferencesSerializer(obj, data={
+                'timezone_name': request.data.get('timezone_name'), 'timezone_mode': 'device',
+            }, partial=True)
+            serializer.is_valid(raise_exception=True)
+            if obj.timezone_name != serializer.validated_data['timezone_name']:
+                serializer.save()
+        return Response(PreferencesSerializer(obj).data)
+
+    @action(detail=False, methods=['patch'])
+    @transaction.atomic
     def update_mine(self, request):
-        obj, _ = HearteliPreferences.objects.get_or_create(user=request.user)
+        obj, _ = HearteliPreferences.objects.select_for_update().get_or_create(user=request.user)
         serializer = PreferencesSerializer(obj, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save(**({"timezone_selected": True} if "timezone_name" in serializer.validated_data else {}))
+        serializer.save()
         return Response(serializer.data)
+
 
 class TherapyGrantSerializer(serializers.ModelSerializer):
     check_in_ids = serializers.PrimaryKeyRelatedField(source='check_ins', many=True,
@@ -547,6 +590,14 @@ class TherapyGrantViewSet(viewsets.ModelViewSet):
         instance.revoked_at = timezone.now()
         instance.save(update_fields=['revoked_at'])
 
+logger = logging.getLogger(__name__)
+
+
+class AccountDeletionThrottle(UserRateThrottle):
+    scope = 'account_deletion'
+    rate = '5/min'
+
+
 class DataControlViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -566,12 +617,50 @@ class DataControlViewSet(viewsets.ViewSet):
         response['Cache-Control'] = 'private, no-store'
         return response
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], throttle_classes=[AccountDeletionThrottle])
     def delete_account(self, request):
+        from apps.users.models import Appointment, BusinessSubscription, CommercialAudit
+
         password = request.data.get('password')
-        if not password or not request.user.check_password(password):
-            raise ValidationError({'password': 'Current password is required.'})
-        if request.user.is_staff or request.user.is_superuser or request.user.is_therapist:
-            raise PermissionDenied('Professional and staff accounts require administrator handling.')
-        request.user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        if not isinstance(password, str) or not 1 <= len(password) <= 1024:
+            return Response({'code': 'invalid_password', 'detail': 'Enter your current password.'}, status=400)
+        reference = uuid4().hex
+        try:
+            with transaction.atomic():
+                account = User.objects.select_for_update().filter(pk=request.user.pk, is_active=True).first()
+                if not account:
+                    return Response({'code': 'session_expired', 'detail': 'Sign in again to continue.'}, status=401)
+                if not account.check_password(password):
+                    return Response({'code': 'invalid_password', 'detail': 'That password did not match.'}, status=400)
+                if (
+                    account.is_staff or account.is_superuser or account.is_therapist
+                    or BusinessSubscription.objects.filter(workspace__owner=account).exists()
+                    or Appointment.objects.filter(user=account).filter(
+                        Q(payment_status__in=['paid', 'refunded'])
+                        | Q(payment_status='pending', payment_checkout_session_id__gt='')
+                    ).exists()
+                ):
+                    CommercialAudit.objects.create(object_type='AccountDeletion', object_id=reference, action='assistance_required')
+                    return Response({
+                        'code': 'deletion_assistance_required', 'reference': reference,
+                        'detail': 'Your account was not deleted. Contact Hearteli support to request deletion.',
+                    }, status=409)
+                # Cascades remove auth tokens, devices, pending deliveries and personal data.
+                # Keep only an opaque audit reference; protected records must not be purged.
+                account.delete()
+                CommercialAudit.objects.create(object_type='AccountDeletion', object_id=reference, action='completed')
+        except ProtectedError:
+            logger.info('Account deletion requires assistance reference=%s', reference)
+            return Response({
+                'code': 'deletion_assistance_required', 'reference': reference,
+                'detail': 'Your account was not deleted. Contact Hearteli support to request deletion.',
+            }, status=409)
+        except DatabaseError:
+            logger.error('Account deletion transaction failed reference=%s', reference)
+            return Response({
+                'code': 'deletion_failed', 'reference': reference,
+                'detail': 'We could not confirm account deletion. Contact support with this reference.',
+            }, status=503)
+        response = Response({'status': 'deleted', 'reference': reference})
+        response['Cache-Control'] = 'no-store'
+        return response

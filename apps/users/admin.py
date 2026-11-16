@@ -261,3 +261,79 @@ class BusinessSubscriptionAdmin(admin.ModelAdmin):
 
 # Register the manual monetisation workflow in place of the earlier billing UI.
 from . import commercial_admin
+
+
+from .models import PrivacyPolicy
+
+
+@admin.register(PrivacyPolicy)
+class PrivacyPolicyAdmin(admin.ModelAdmin):
+    list_display = ['__str__', 'publication_status', 'saved_at', 'published_at']
+    readonly_fields = ['publication_status', 'saved_at', 'published_at', 'preview_draft']
+    fields = ['draft', 'publication_status', 'saved_at', 'published_at', 'preview_draft']
+    actions = ['publish_reviewed_policy']
+
+    class Media:
+        js = ('hearteli/policy-editor.js',)
+
+    def has_add_permission(self, request):
+        return super().has_add_permission(request) and not PrivacyPolicy.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            obj.save(update_fields=['draft', 'saved_at'])
+        else:
+            super().save_model(request, obj, form, change)
+
+    def has_publish_permission(self, request):
+        return self.has_change_permission(request) and request.user.has_perm('users.publish_privacypolicy')
+
+    @admin.display(description='Public status')
+    def publication_status(self, obj):
+        return 'Published (draft edits are private)' if obj and obj.published_at else 'Draft only'
+
+    @admin.display(description='Draft preview')
+    def preview_draft(self, obj):
+        if not obj or not obj.pk:
+            return 'Save a draft before previewing.'
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Preview saved draft</a>', reverse('admin:privacy-policy-draft', args=[obj.pk]))
+
+    def get_urls(self):
+        from django.urls import path
+        return [path('<int:pk>/draft-preview/', self.admin_site.admin_view(self.preview), name='privacy-policy-draft')] + super().get_urls()
+
+    def preview(self, request, pk):
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import get_object_or_404, render
+        from .policy_web import render_policy
+
+        obj = get_object_or_404(PrivacyPolicy, pk=pk)
+        if not self.has_change_permission(request, obj):
+            raise PermissionDenied
+        return render(request, 'privacy_policy.html', {'preview_html': render_policy(obj.draft), 'is_preview': True})
+
+    @admin.action(permissions=['publish'], description='Publish selected policy after content approval')
+    def publish_reviewed_policy(self, request, queryset):
+        from django.core.exceptions import PermissionDenied
+        from django.utils.html import strip_tags
+        from .policy_web import render_policy
+
+        if not self.has_publish_permission(request):
+            raise PermissionDenied
+        with transaction.atomic():
+            policy = queryset.select_for_update().first()
+            html = render_policy(policy.draft) if policy else ''
+            if not strip_tags(html).strip():
+                self.message_user(request, 'Save a complete reviewed draft before publishing.', level=messages.ERROR)
+                return
+            policy.published_html = html
+            from django.utils import timezone
+            policy.published_at = timezone.now()
+            policy.save(update_fields=['published_html', 'published_at'])
+            self.log_change(request, policy, 'Published reviewed privacy policy')
+        self.message_user(request, 'Privacy Policy published.', level=messages.SUCCESS)

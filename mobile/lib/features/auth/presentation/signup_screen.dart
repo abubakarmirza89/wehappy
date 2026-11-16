@@ -1,3 +1,4 @@
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
@@ -104,6 +105,17 @@ class _SignupScreenState extends State<SignupScreen> {
               Text(_error!, style: const TextStyle(color: Colors.redAccent)),
             ],
             const SizedBox(height: 24),
+            TextButton(
+              onPressed: () async {
+                if (!await launchUrl(Uri.https('hearteli.com', '/privacy-policy/'),
+                    mode: LaunchMode.externalApplication) && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not open the Privacy Policy.')),
+                  );
+                }
+              },
+              child: const Text('Read the Privacy Policy'),
+            ),
             AppButton(label: 'Create account', onPressed: _signup, busy: _busy),
           ],
         ),
