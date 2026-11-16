@@ -44,6 +44,11 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "hearteli/device_timezone")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "get") result.success(java.util.TimeZone.getDefault().id)
+                else result.notImplemented()
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "hearteli/data_export")
             .setMethodCallHandler { call, result ->
                 if (call.method != "save") {

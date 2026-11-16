@@ -1,0 +1,17 @@
+{% extends 'work/base.html' %}
+{% block title %}Privacy Policy · Hearteli{% endblock %}
+{% block content %}
+<article class="panel" style="max-width: 54rem; margin-inline: auto">
+  <h1>Privacy Policy</h1>
+  {% if is_preview %}
+    <p role="status"><strong>Private draft preview. This is not the public policy.</strong></p>
+    <div>{{ preview_html|safe }}</div>
+  {% elif policy %}
+    <p>Last updated: <time datetime="{{ policy.published_at|date:'Y-m-d' }}">{{ policy.published_at|date:'j F Y' }}</time></p>
+    <div>{{ policy.published_html|safe }}</div>
+  {% else %}
+    <p>The approved Privacy Policy is not available yet.</p>
+  {% endif %}
+</article>
+<footer><a href="{% url 'landing_page' %}">Hearteli home</a> · <a href="{% url 'hearteli-work-support' %}">Contact support</a></footer>
+{% endblock %}

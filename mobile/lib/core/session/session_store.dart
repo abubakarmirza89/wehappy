@@ -69,8 +69,8 @@ class SessionStore {
   }
 
   Future<void> clear() async {
-    await _secure.delete(key: _secureTokenKey);
     _token = null;
+    await _secure.delete(key: _secureTokenKey);
     await _preferences.remove(_userIdKey);
     await _preferences.remove(_userNameKey);
     await _preferences.remove(_therapistKey);

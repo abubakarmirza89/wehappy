@@ -7,11 +7,12 @@ import '../config/app_config.dart';
 import '../session/session_store.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, this.statusCode, {this.code});
+  const ApiException(this.message, this.statusCode, {this.code, this.reference});
 
   final String message;
   final int statusCode;
   final String? code;
+  final String? reference;
 
   @override
   String toString() => message;
@@ -102,7 +103,12 @@ class ApiClient {
           ? (data['detail'] ?? data['error'] ?? data.values.firstOrNull ?? 'Request failed')
           : 'Request failed';
       final code = data is Map ? data['code'] : null;
-      throw ApiException('$message', response.statusCode, code: code is String ? code : null);
+      final reference = data is Map ? data['reference'] : null;
+      throw ApiException('$message', response.statusCode,
+        code: code is String ? code : null,
+        reference: reference is String && RegExp(r'^[a-f0-9]{32}$').hasMatch(reference)
+            ? reference : null,
+      );
     }
     return data;
   }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../therapist/presentation/practice_shell.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/notifications/device_timezone.dart';
 import '../../../core/notifications/firebase_service.dart';
 import '../../../core/session/session_store.dart';
 import '../../../core/theme/app_theme.dart';
@@ -33,7 +34,7 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int index = 0, refresh = 0;
   bool workContext = false;
   bool hasOpenedWork = false;
@@ -42,6 +43,10 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    if (!widget.personalOnly) {
+      WidgetsBinding.instance.addObserver(this);
+      syncDeviceTimezone(widget.apiClient);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       FirebaseService(widget.apiClient).initialize(
@@ -79,7 +84,13 @@ class _AppShellState extends State<AppShell> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) syncDeviceTimezone(widget.apiClient);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     FirebaseService.disconnect();
     super.dispose();
   }
