@@ -69,7 +69,7 @@ class WorkConsoleTests(TestCase):
         self.assertTrue(WorkspaceMembership.objects.filter(workspace=workspace,
             role=WorkspaceMembership.ROLE_OWNER,
             status=WorkspaceMembership.STATUS_APPROVED).exists())
-        self.assertContains(self.client.get(f'/work/{workspace.pk}/'), 'Subscribe to activate this workspace')
+        self.assertContains(self.client.get(f'/work/{workspace.pk}/'), 'Your workplace subscription isn’t active')
         self.assertContains(self.client.get(f'/work/{workspace.pk}/billing/'), 'Available plans')
         self.assertFalse(BusinessSubscription.objects.filter(workspace=workspace).exists())
 
@@ -139,15 +139,15 @@ class WorkConsoleTests(TestCase):
             fetch_redirect_response=False,
         )
         response = self.client.get(f'/work/{self.workspace.pk}/pages/members/')
-        self.assertContains(response, 'An active subscription is required before you can invite members.')
-        self.assertContains(response, 'Go to Plans & billing')
+        self.assertContains(response, 'Invitations are unavailable until your subscription is active.')
+        self.assertContains(response, 'View billing')
         self.assertNotContains(response, 'Send invitation')
         self.assertEqual(mail.outbox, [])
         self.assertFalse(WorkspaceSignupInvitation.objects.exists())
 
         response = self.client.get(f'/work/{self.workspace.pk}/pages/resources/')
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Subscribe to use workplace resources')
+        self.assertContains(response, 'Resource publishing is unavailable until activation.')
 
     def test_invitation_signup_requires_the_invited_email_address(self):
         invitation = WorkspaceSignupInvitation.objects.create(

@@ -1,40 +1,43 @@
 {% extends 'work/base.html' %}
-{% block title %}Your workspaces · Hearteli{% endblock %}
+{% block title %}Your workplaces · Hearteli{% endblock %}
 {% block content %}
-<div class="workspace-index">
-  <div>
-    <span class="eyebrow">Hearteli for Work</span>
-    <h1>Support starts with people.</h1>
-    <p class="muted">Choose a workplace you administer, or create one for your team. A subscription is required before inviting members or publishing workplace resources.</p>
-    {% if pending_invitations %}
-      <section class="panel">
-        <h2>Workspace invitations</h2>
-        <p>Your account has joined these workspaces and is awaiting owner approval:</p>
-        {% for membership in pending_invitations %}
-          <p class="workspace-message">{{ membership.workspace.name }}{% if membership.invited_by %} — invited by {{ membership.invited_by.name }}{% endif %}</p>
-        {% endfor %}
-      </section>
-    {% endif %}
-    <div class="workspace-list">
-      {% for workspace in workspaces %}
-        <a class="card" href="{% url 'hearteli-work-dashboard' workspace.id %}"><span class="icon">♡</span><h2>{{ workspace.name }}</h2><p>Members, resources and privacy safe insights →</p></a>
-      {% empty %}
-        <div class="card soft"><h2>No workspaces yet</h2><p>Your personal account remains separate from the workplace console.</p></div>
-      {% endfor %}
-    </div>
+<section class="work-index">
+  <span class="eyebrow">Hearteli for Work</span>
+  <h1>Your workplaces</h1>
+  <p>Choose a workplace to manage your team and support resources.</p>
+  {% if pending_invitations %}
+    <section class="panel">
+      <h2>Waiting for approval</h2>
+      <p>Ask the workplace owner to approve your access.</p>
+      <ul>{% for membership in pending_invitations %}<li>{{ membership.workspace.name }}{% if membership.invited_by %} — invited by {{ membership.invited_by.name }}{% endif %}</li>{% endfor %}</ul>
+    </section>
+  {% endif %}
+  <div class="workplace-list">
+    {% for item in workplaces %}
+      <article class="card">
+        <h2>{{ item.workspace.name }}</h2>
+        <p>Your role: <strong>{% if item.is_owner %}Owner{% else %}Manager{% endif %}</strong></p>
+        <p><span class="pill">{% if item.subscription.entitled %}Subscription active{% else %}Subscription not active{% endif %}</span></p>
+        {% if item.workspace.description %}<p>{{ item.workspace.description }}</p>{% endif %}
+        {% if not item.subscription.entitled %}
+          <p>{% if item.is_owner %}Invitations and resource publishing unlock once your subscription is active.{% else %}Ask your workplace owner about subscription activation.{% endif %}</p>
+        {% endif %}
+        <div class="work-actions">
+          <a class="button" href="{% url 'hearteli-work-dashboard' item.workspace.pk %}">Open workplace →</a>
+          {% if item.is_owner and not item.subscription.entitled %}<a href="{% url 'business-billing' item.workspace.pk %}">View billing</a>{% endif %}
+        </div>
+      </article>
+    {% endfor %}
   </div>
-  <section class="card">
-    <span class="eyebrow">For business owners</span>
-    <h2>Create a workplace</h2>
-    <p class="small">Create your workspace now, then choose a subscription to activate team invitations and resources. No personal check-ins are shared.</p>
-    <form method="post" action="{% url 'hearteli-work-create' %}">
-      {% csrf_token %}
-      <label for="workspace_name">Workspace name</label>
-      <input id="workspace_name" name="name" maxlength="120" required>
-      <label for="workspace_description">Description (optional)</label>
-      <input id="workspace_description" name="description" maxlength="500">
-      <button class="full" type="submit">Create workspace</button>
-    </form>
+  <section class="panel work-create">
+    {% if workplaces %}
+      <details><summary>Create another workplace</summary>{% include 'work/create_workplace_form.html' %}</details>
+    {% else %}
+      <h2>Create your workplace</h2>
+      {% include 'work/create_workplace_form.html' %}
+    {% endif %}
   </section>
-</div>
+  <p>Personal check-ins and private notes stay private.</p>
+  <p><a href="{% url 'hearteli-work-support' %}">Contact support</a></p>
+</section>
 {% endblock %}

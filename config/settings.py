@@ -288,6 +288,7 @@ TWILIO_AUTH_TOKEN = env("TWILIO_AUTH_TOKEN", default="")
 TWILIO_PHONE_NUMBER = env("TWILIO_PHONE_NUMBER", default="")
 
 # Set this to the verified HTTPS origin; reset links never trust request Host.
+HEARTELI_WORK_SUPPORT_EMAIL = env('HEARTELI_WORK_SUPPORT_EMAIL', default='')
 HEARTELI_PUBLIC_URL = env("HEARTELI_PUBLIC_URL", default="http://localhost:8000")
 HEARTELI_EMAIL_MESSAGE_DOMAIN = env("HEARTELI_EMAIL_MESSAGE_DOMAIN", default="hearteli.local")
 PASSWORD_RESET_TIMEOUT = 3600

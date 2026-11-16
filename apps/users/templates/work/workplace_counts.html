@@ -1,0 +1,6 @@
+<section class="kpis work-kpis{% if show_seats %} with-seats{% endif %}" aria-label="Workplace totals">
+  {% if show_seats %}<article class="kpi soft"><span>Seats used</span><strong>{{ seats_used }} of {{ subscription.plan.member_limit }}</strong><small>Excludes the owner; includes pending invitations.</small></article>{% endif %}
+  <article class="kpi mint"><span>Team members</span><strong>{{ approved_count }}</strong>{% if includes_you %}<small>Includes you</small>{% endif %}</article>
+  <article class="kpi blue"><span>Pending invitations</span><strong>{{ pending_count }}</strong></article>
+  <article class="kpi pink"><span>Published resources</span><strong>{{ resources|length }}</strong></article>
+</section>

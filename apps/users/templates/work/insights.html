@@ -1,4 +1,33 @@
 {% extends 'work/business_layout.html' %}
 {% block workspace_content %}
-<section class="panel"><h2>Trust before trends</h2><p>Membership counts reflect workspace administration. Employee moods, journal entries and individual risk scores are never available to managers here.</p><p>Wellbeing trend charts remain unavailable until a separately authorised, privacy-preserving program is configured.</p></section>
+<p>See how your workplace is set up: membership, invitations, seats and support resources.</p>
+{% if subscription.entitled %}
+  <p class="pill">Subscription active</p>
+  <p class="small">Snapshot as of <time datetime="{{ current_time|date:'c' }}">{{ current_time|date:"j M Y, H:i T" }}</time></p>
+  {% include 'work/workplace_counts.html' with show_seats=True %}
+  <section class="panel">
+    <h2>What these numbers mean</h2>
+    <p>Team members have approved access. Pending invitations include people waiting for approval or who have not yet signed up. Seats count non-owner members with access or a pending invitation.</p>
+    <p>Published resources are links added to this workplace.</p>
+    {% if is_owner %}
+      <div class="work-actions">
+        {% if seats_available %}
+          <a href="{% url 'business-page' workspace.pk 'members' %}#invite-team">Invite team</a>
+        {% else %}
+          <span>All seats are in use.</span>
+          <a href="{% url 'business-page' workspace.pk 'members' %}">View team</a>
+        {% endif %}
+        <a href="{% url 'business-page' workspace.pk 'resources' %}">{% if resources %}Manage resources{% else %}Add support resources{% endif %}</a>
+      </div>
+    {% endif %}
+  </section>
+  <section class="panel"><h2>Resource engagement</h2><p>Resource view reporting is not available yet.</p></section>
+{% else %}
+  {% include 'work/subscription_notice.html' with restriction="An active subscription enables reporting on membership, seats and workplace setup." %}
+{% endif %}
+<section class="panel">
+  <h2>Personal information stays private</h2>
+  <p>Workplace insights do not show individual moods, journals, personal check-ins or risk scores.</p>
+  <a href="{% url 'business-page' workspace.pk 'privacy' %}">View privacy &amp; access →</a>
+</section>
 {% endblock %}

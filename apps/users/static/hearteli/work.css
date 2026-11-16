@@ -14,3 +14,55 @@
 .password-field{display:block;position:relative;width:100%}.password-field input{padding-right:52px!important}.password-toggle{position:absolute;top:50%;right:7px;transform:translateY(-50%);display:grid;place-items:center;width:36px;height:36px;padding:7px;background:transparent!important;color:var(--grey)!important;border:0!important;border-radius:8px;cursor:pointer}.password-toggle:hover{background:#f1f5f9!important;color:var(--navy)!important}.password-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.password-toggle[aria-pressed="false"] svg:last-child,.password-toggle[aria-pressed="true"] svg:first-child{display:none}
 .card,.panel,.kpi,.workspace-message,.privacy-strip,.error{margin-bottom:16px}
 .workspace-message.error{background:#fff0ef;color:#af302a}.workspace-message.success{background:#e8f7ef;color:#176b3a}
+
+/* Workplace dashboard and reset form */
+:is(.work-console,.work-index,.reset-card) :focus-visible {
+  outline: 3px solid #334b74;
+  outline-offset: 3px;
+}
+.work-console { grid-template-columns: minmax(165px, 212px) minmax(0, 1fr); gap: 24px; }
+.work-console .console-main > * + * { margin-top: 18px; }
+.work-console .panel, .work-index .panel, .workplace-list .card, .work-kpis .kpi { margin: 0; min-width: 0; }
+.work-sidebar { min-width: 0; padding-top: 18px; }
+.work-sidebar a, .work-mobile-nav nav a { display: block; padding: 11px 13px; border-radius: 10px; text-decoration: none; font-weight: 800; overflow-wrap: anywhere; }
+.work-sidebar a:hover, .work-sidebar a[aria-current], .work-mobile-nav a:hover, .work-mobile-nav a[aria-current] { background: var(--pink); color: #8a2925; }
+.work-mobile-nav { display: none; }
+.work-heading { overflow-wrap: anywhere; }
+.workplace-name { font-size: clamp(19px, 3vw, 26px); font-weight: 900; margin-bottom: 0; }
+.work-index { width: min(100%, 920px); margin: 30px auto; overflow-wrap: anywhere; }
+.work-index > * + *, .work-create form > button, .work-console .panel form > button { margin-top: 12px; }
+.workplace-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 16px; }
+.work-create details { border: 0; margin: 0; padding: 0; }
+.work-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.work-console .button, .work-index .button, .reset-card .button { color: var(--navy); text-align: center; }
+.work-task-list { padding: 0; list-style: none; }
+.work-task-list li { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.work-category-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr)); gap: 12px; }
+.work-category-list > div { background: var(--blue); padding: 14px; border-radius: 12px; }
+.work-category-list dt, .work-roles dt { font-weight: 900; }
+.work-category-list dd, .work-roles dd { margin: 4px 0 12px; }
+.work-member-table { overflow-x: auto; }
+.work-member-table table { table-layout: fixed; overflow-wrap: anywhere; }
+.work-member-table td { vertical-align: top; }
+.work-member-table td p { margin: 4px 0; }
+.work-member-table td form + form { margin-top: 8px; }
+.work-member-table button { padding-inline: 9px; }
+.work-kpis.with-seats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.work-kpis .kpi strong { font-size: clamp(22px, 4vw, 36px); }
+.reset-card { max-width: 480px; margin: 48px auto; padding: clamp(14px, 5vw, 34px); }
+.password-field-text input { padding-right: 76px !important; }
+.reset-card .password-field-text .password-toggle {
+  position: absolute; right: 5px; min-width: 60px; height: 44px;
+  padding: 4px 8px; font: 800 14px Nunito, system-ui;
+  background: var(--blue) !important; color: var(--navy) !important;
+}
+@media (max-width: 760px) {
+  .work-console { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .work-sidebar { display: none; }
+  .work-mobile-nav { display: block; background: white; border: 1px solid var(--border); padding: 12px; margin: 0; border-radius: 12px; }
+  .work-mobile-nav summary { color: var(--navy); }
+  .work-mobile-nav nav { margin-top: 8px; }
+  .work-kpis.with-seats { grid-template-columns: minmax(0, 1fr); }
+  .work-member-table thead th, .work-member-table td { padding-inline: 4px; }
+  .work-member-table table:has(th:nth-child(4)) { table-layout: auto; min-width: 420px; }
+}

@@ -1,0 +1,8 @@
+<form method="post" action="{% url 'hearteli-work-create' %}">
+  {% csrf_token %}
+  <label for="workspace_name">Workplace name</label>
+  <input id="workspace_name" name="name" minlength="2" maxlength="120" required>
+  <label for="workspace_description">Description (optional)</label>
+  <input id="workspace_description" name="description" maxlength="500">
+  <button type="submit">Create workplace</button>
+</form>

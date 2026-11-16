@@ -1,11 +1,22 @@
 from rest_framework.exceptions import APIException
 from django.utils import timezone
 from apps.users.models import BusinessSubscription
-from .models import WorkspaceMembership, WorkspaceSignupInvitation
+from .models import WorkspaceSignupInvitation
 
 class SubscriptionRequired(APIException):
     status_code=402
     default_detail='An active workspace subscription is required. Open Plans & billing.'
+
+def seat_usage(workspace, now=None):
+    """Count seats with the same rules on billing gates and dashboard charts."""
+    now = now or timezone.now()
+    memberships = workspace.memberships
+    members = memberships.exclude(status='rejected').exclude(user_id=workspace.owner_id).count()
+    invitations = workspace.signup_invitations.filter(
+        claimed_at__isnull=True, expires_at__gt=now,
+    ).exclude(email__in=memberships.values_list('user__email', flat=True)).values('email').distinct().count()
+    return members + invitations
+
 
 def require_subscription(workspace, adding_member=False, invite_email=''):
     if workspace.workspace_type!='office': return
@@ -18,15 +29,7 @@ def require_subscription(workspace, adding_member=False, invite_email=''):
             expires_at__gt=now,
         ).exists():
             adding_member = False
-        member_count = workspace.memberships.exclude(status='rejected').exclude(
-            user_id=workspace.owner_id
-        ).count()
-        invitation_count = WorkspaceSignupInvitation.objects.filter(
-            workspace=workspace, claimed_at__isnull=True, expires_at__gt=now,
-        ).exclude(email__in=workspace.memberships.values_list('user__email', flat=True)).values(
-            'email'
-        ).distinct().count()
-        if adding_member and member_count + invitation_count >= sub.plan.member_limit:
+        if adding_member and seat_usage(workspace, now) >= sub.plan.member_limit:
             raise SubscriptionRequired('Your plan member limit is reached. Upgrade before inviting more members.')
 
 class SubscriptionGateMiddleware:

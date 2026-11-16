@@ -4,6 +4,7 @@ import secrets
 from datetime import timedelta
 
 from django import forms
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
@@ -156,10 +157,34 @@ def index(request):
         workspace__workspace_type=Workspace.WORKSPACE_TYPE_OFFICE,
         workspace__is_active=True,
     ).select_related('workspace', 'invited_by')
+    from apps.users.models import BusinessSubscription
+
+    workspaces = list(workspaces.order_by('name', 'pk'))
+    subscriptions = {
+        sub.workspace_id: sub for sub in BusinessSubscription.objects.filter(
+            workspace_id__in=[workspace.pk for workspace in workspaces]
+        ).select_related('workspace')
+    }
     return render(request, 'work/index.html', {
-        'workspaces': workspaces,
+        'workplaces': [{
+            'workspace': workspace,
+            'is_owner': workspace.owner_id == request.user.pk,
+            'subscription': subscriptions.get(workspace.pk),
+        } for workspace in workspaces],
         'pending_invitations': pending_invitations,
     })
+
+
+@require_http_methods(['GET', 'HEAD'])
+def support(request):
+    from django.core.validators import validate_email
+
+    email = settings.HEARTELI_WORK_SUPPORT_EMAIL
+    try:
+        validate_email(email)
+    except ValidationError:
+        email = ''
+    return render(request, 'work/support.html', {'support_email': email})
 
 
 @login_required(login_url='/work/login/')
