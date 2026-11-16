@@ -488,3 +488,20 @@ class SponsorBookingAttribution(models.Model):
     appointment=models.OneToOneField(Appointment,on_delete=models.CASCADE,related_name='sponsor_attribution')
     ticket=models.ForeignKey(SponsorEventTicket,on_delete=models.CASCADE,related_name='bookings')
     created_at=models.DateTimeField(default=timezone.now)
+
+
+class PrivacyPolicy(models.Model):
+    """One draft and one public snapshot, edited independently."""
+    key = models.CharField(max_length=16, unique=True, default='privacy', editable=False)
+    draft = models.TextField()
+    published_html = models.TextField(blank=True, editable=False)
+    saved_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True, editable=False)
+
+    class Meta:
+        verbose_name = 'Privacy Policy'
+        verbose_name_plural = 'Privacy Policy'
+        permissions = [('publish_privacypolicy', 'Can publish the Privacy Policy')]
+
+    def __str__(self):
+        return 'Hearteli Privacy Policy'

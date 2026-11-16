@@ -1,3 +1,4 @@
+from apps.users.policy_web import privacy_policy
 from apps.tracking.circle_invitation_web import review_invitation
 from apps.users import email_verification
 from apps.users import commercial_reports
@@ -50,6 +51,7 @@ urlpatterns = [
     path('work/<int:pk>/billing/',billing.billing_page,name='business-billing'),
     path('work/<int:pk>/billing/checkout/',billing.checkout,name='business-checkout'),
     path('work/<int:pk>/billing/portal/',billing.portal,name='business-portal'),
+    path('privacy-policy/', privacy_policy, name='hearteli-privacy-policy'),
     path('', landing_page, name='landing_page'),
 
     path(settings.ADMIN_URL, admin.site.urls),

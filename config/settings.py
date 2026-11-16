@@ -294,3 +294,7 @@ HEARTELI_EMAIL_MESSAGE_DOMAIN = env("HEARTELI_EMAIL_MESSAGE_DOMAIN", default="he
 PASSWORD_RESET_TIMEOUT = 3600
 
 HEARTELI_CURRENCY = env("HEARTELI_CURRENCY", default="usd").lower()
+
+HEARTELI_PLAY_STORE_URL = env('HEARTELI_PLAY_STORE_URL', default='')
+HEARTELI_TERMS_URL = env('HEARTELI_TERMS_URL', default='')
+TEMPLATES[0]['OPTIONS']['context_processors'].append('apps.users.public_links.public_links')

@@ -1,6 +1,6 @@
-from datetime import timedelta
+from datetime import timedelta, timezone as utc_timezone
 from .appointment_time import appointment_start, appointment_time_text
-from zoneinfo import ZoneInfo
+from .notification_time import notification_zone, reminder_occurrences
 from django.utils import timezone
 from apps.tracking.models import HearteliPreferences, MoodCheckIn, EmpathyNudge, SupportOutcome
 from .models import Appointment, EmailDelivery, Notification
@@ -19,8 +19,10 @@ def queue_due_push_reminders(at=None):
         user__device_tokens__is_active=True,
     ).select_related('user').distinct().iterator():
         user = pref.user
-        local = at.astimezone(ZoneInfo(pref.timezone_name))
-        if local.time().replace(second=0, microsecond=0) != pref.reminder_time:
+        zone = notification_zone(pref.timezone_name)
+        local = at.astimezone(zone)
+        minute = at.astimezone(utc_timezone.utc).replace(second=0, microsecond=0)
+        if minute not in reminder_occurrences(local.date(), pref.reminder_time, zone):
             continue
         if MoodCheckIn.objects.filter(user=user, date=local.date()).exists():
             continue

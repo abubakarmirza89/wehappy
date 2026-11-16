@@ -47,6 +47,17 @@ def billing_page(request, pk):
                 if session.get('mode') == 'subscription' and session.get('client_reference_id') == str(workspace.pk):
                     if session.get('status') == 'complete':
                         checkout_state = 'paid' if session.get('payment_status') in ('paid', 'no_payment_required') else 'pending'
+                        if checkout_state == 'paid':
+                            try:
+                                reconciled = reconcile_work_checkout(session, workspace.pk)
+                            except stripe.StripeError:
+                                reconciled = False
+                            if reconciled:
+                                context = workspace_context(workspace, request.user, 'billing') | {
+                                    'plans': context['plans'], 'billing_ready': True,
+                                }
+                                if context['subscription'].entitled:
+                                    checkout_state = 'active'
                     elif session.get('status') == 'open':
                         checkout_state = 'open'
                     elif session.get('status') == 'expired':
@@ -175,7 +186,61 @@ def portal(request, pk):
 
 
 
-def update_subscription(remote):
+def stripe_id(value):
+    return value.get('id') if hasattr(value, 'get') else value
+
+
+def reconcile_work_checkout(session, workspace_id=None):
+    """Recover a missing webhook using only a checkout saved by this workspace."""
+    session_id = session.get('id')
+    subscription_id = stripe_id(session.get('subscription'))
+    if not (
+        session_id and subscription_id and session.get('mode') == 'subscription'
+        and session.get('status') == 'complete'
+        and session.get('payment_status') in ('paid', 'no_payment_required')
+    ):
+        return False
+    subscriptions = BusinessSubscription.objects.filter(checkout_session_id=session_id)
+    if workspace_id is not None:
+        subscriptions = subscriptions.filter(workspace_id=workspace_id)
+    sub = subscriptions.first()
+    if not sub or str(sub.workspace_id) != str(session.get('client_reference_id')):
+        return False
+    with transaction.atomic():
+        locked = subscriptions.select_for_update().filter(pk=sub.pk).first()
+        if not locked:
+            return False
+        remote = stripe.Subscription.retrieve(subscription_id, api_key=settings.STRIPE_SECRET_KEY)
+        metadata = remote.get('metadata') or {}
+        if (
+            remote.get('id') != subscription_id
+            or str(metadata.get('workspace_id')) != str(locked.workspace_id)
+            or str(metadata.get('billing_plan_id')) != str(locked.plan_id)
+            or not stripe_id(session.get('customer'))
+            or stripe_id(session.get('customer')) != stripe_id(remote.get('customer'))
+        ):
+            return False
+        items = (remote.get('items') or {}).get('data') or []
+        if len(items) != 1:
+            return False
+        item = items[0]
+        price = item.get('price') or {}
+        plan = locked.plan
+        if item.get('quantity', 1) != 1:
+            return False
+        if plan.stripe_price_id:
+            if price.get('id') != plan.stripe_price_id:
+                return False
+        elif not (
+            price.get('unit_amount') == int(plan.monthly_price * 100)
+            and (price.get('currency') or '').lower() == plan.currency.lower()
+            and (price.get('recurring') or {}).get('interval') == 'month'
+        ):
+            return False
+        return update_subscription(remote, checkout_row=locked)
+
+
+def update_subscription(remote, checkout_row=None):
     # Always retrieve current provider state, so delayed events cannot restore stale access.
     customer = remote.get('customer')
     if isinstance(customer, dict):
@@ -188,7 +253,9 @@ def update_subscription(remote):
         lookup |= Q(workspace_id=workspace_id)
     if not lookup:
         return
-    sub=BusinessSubscription.objects.select_for_update().filter(lookup).first()
+    sub = checkout_row or BusinessSubscription.objects.select_for_update().filter(lookup).first()
+    if sub and sub.stripe_subscription_id and sub.stripe_subscription_id != remote.get('id') and checkout_row is None:
+        return False
     if not sub: return
     if workspace_id and str(sub.workspace_id)!=str(workspace_id): return
     if sub.customer_id and customer and sub.customer_id != customer: return
@@ -198,7 +265,8 @@ def update_subscription(remote):
     if not plan and metadata.get('billing_plan_id'):
         plan=BillingPlan.objects.filter(pk=metadata['billing_plan_id']).first()
     if not plan: return
-    if remote.get('currency') and remote['currency']!=plan.currency: return
+    if remote.get('currency') and remote['currency'].lower() != plan.currency.lower(): return
+    if checkout_row is not None and plan.pk != checkout_row.plan_id: return False
     sub.plan=plan;sub.stripe_subscription_id=remote['id'];sub.status=remote['status']
     if customer:
         sub.customer_id=customer
@@ -218,6 +286,7 @@ def update_subscription(remote):
     queue_email(sub.workspace.owner,'subscription','Your Hearteli workspace subscription update',
         f'Your workspace subscription is {sub.status}. Open billing to review renewal, invoices or payment details.',
         key=f'subscription:{sub.pk}:{sub.status}:{end}:{sub.cancel_at_period_end}',path=f'/work/{sub.workspace_id}/billing/')
+    return True
 
 
 @csrf_exempt
@@ -234,8 +303,8 @@ def webhook(request):
         if kind.startswith('customer.subscription.'):
             remote=stripe.Subscription.retrieve(obj['id'],api_key=settings.STRIPE_SECRET_KEY)
             update_subscription(remote)
-        elif kind=='checkout.session.completed' and obj.get('mode')=='subscription' and obj.get('subscription'):
-            update_subscription(stripe.Subscription.retrieve(obj['subscription'],api_key=settings.STRIPE_SECRET_KEY))
+        elif kind in ('checkout.session.completed', 'checkout.session.async_payment_succeeded') and obj.get('mode') == 'subscription':
+            reconcile_work_checkout(obj)
         elif kind in ('checkout.session.completed', 'checkout.session.async_payment_succeeded') and obj.get('mode')=='payment' and obj.get('payment_status')=='paid':
             a=Appointment.objects.select_for_update().filter(payment_checkout_session_id=obj['id']).first()
             payment_intent=obj.get('payment_intent')

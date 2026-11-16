@@ -1,3 +1,5 @@
+import '../../../core/notifications/device_timezone.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../therapist/presentation/practice_shell.dart';
@@ -63,6 +65,17 @@ class SettingsScreen extends StatelessWidget {
                             ),
                       ),
                     ),
+              ),
+              LabelRow(
+                icon: Icons.policy_outlined,
+                title: 'Privacy Policy',
+                subtitle: 'Read how Hearteli handles personal information',
+                onTap: () async {
+                  if (!await launchUrl(Uri.https('hearteli.com', '/privacy-policy/'),
+                      mode: LaunchMode.externalApplication) && context.mounted) {
+                    showCalmMessage(context, 'Could not open the Privacy Policy.');
+                  }
+                },
               ),
               LabelRow(
                 icon: Icons.mail_outline,
@@ -329,7 +342,7 @@ class _NotificationSettingsState extends State<NotificationSettings>
       emailNotifications = true,
       sponsorOptIn = false;
   String timezoneName = "UTC";
-  bool timezoneEdited = false;
+  bool timezoneEdited = false, manualTimezone = false;
   TimeOfDay reminderTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay? start, end;
   String? error;
@@ -406,9 +419,8 @@ class _NotificationSettingsState extends State<NotificationSettings>
           : '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   Future<void> load() async {
     try {
-      final data = await widget.apiClient.get(
-        '/api/tracking/hearteli/preferences/',
-      );
+      final data = await syncDeviceTimezone(widget.apiClient) ??
+          await widget.apiClient.get('/api/tracking/hearteli/preferences/');
       if (mounted)
         setState(() {
           reminder = data['reminder_enabled'] == true;
@@ -417,6 +429,7 @@ class _NotificationSettingsState extends State<NotificationSettings>
           emailNotifications = data['email_notifications'] != false;
           sponsorOptIn = data['sponsor_opt_in'] == true;
           timezoneName = '${data['timezone_name'] ?? 'UTC'}';
+          manualTimezone = data['timezone_mode'] == 'manual' || data['timezone_selected'] == true;
           reminderTime =
               parse(data['reminder_time']) ??
               const TimeOfDay(hour: 9, minute: 0);
@@ -477,6 +490,26 @@ class _NotificationSettingsState extends State<NotificationSettings>
     }
   }
 
+  Future<void> chooseTimezone() async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (_) => _TimezoneDialog(apiClient: widget.apiClient),
+    );
+    if (!mounted || selected == null) return;
+    final zone = selected.isEmpty ? await readDeviceTimezone() : selected;
+    if (!mounted) return;
+    if (zone == null) {
+      setState(() => error = 'Your device timezone could not be read. Choose a timezone manually.');
+      return;
+    }
+    setState(() {
+      timezoneName = zone;
+      manualTimezone = selected.isNotEmpty;
+      timezoneEdited = true;
+      error = null;
+    });
+  }
+
   Future<void> save() async {
     if (busy) return;
     if ((start == null) != (end == null) || (start != null && start == end)) {
@@ -499,6 +532,7 @@ class _NotificationSettingsState extends State<NotificationSettings>
           'email_notifications': emailNotifications,
           'sponsor_opt_in': sponsorOptIn,
           if (timezoneEdited) 'timezone_name': timezoneName,
+          if (timezoneEdited) 'timezone_mode': manualTimezone ? 'manual' : 'device',
           'reminder_time': format(reminderTime),
           'nudge_notifications': nudge,
           'rich_lock_preview': rich,
@@ -587,27 +621,16 @@ class _NotificationSettingsState extends State<NotificationSettings>
           value: emailNotifications,
           onChanged: (v) => setState(() => emailNotifications = v),
         ),
-        DropdownButtonFormField<String>(
-          value: timezoneName,
-          decoration: const InputDecoration(labelText: 'Notification timezone'),
-          items:
-              {
-                timezoneName,
-                'UTC',
-                'Asia/Karachi',
-                'Australia/Sydney',
-                'Europe/London',
-                'America/New_York',
-                'Asia/Dubai',
-              }.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-          onChanged:
-              (v) => setState(() {
-                if (v != null) {
-                  timezoneName = v;
-                  timezoneEdited = true;
-                }
-              }),
+        ListTile(
+          title: const Text('Notification timezone'),
+          subtitle: Text(
+            '${manualTimezone ? 'Manual override' : 'Use device timezone'} — ${timezoneLabel(timezoneName)}',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: busy ? null : chooseTimezone,
         ),
+        const Text('Device mode updates when you open Hearteli; manual overrides stay fixed until you change them.'),
+        Text('Reminder and quiet hours use ${timezoneLabel(timezoneName)}.'),
         OutlinedButton(
           onPressed: () async {
             final t = await showTimePicker(
@@ -772,41 +795,49 @@ class _DataSettingsState extends State<DataSettings> {
 
   Future<void> delete() async {
     if (busy) return;
-    final deleted = await showDialog<bool>(
+    final reference = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (_) => _DeletePasswordDialog(
         onDelete: (password) async {
-          await widget.apiClient.post(
+          final result = await widget.apiClient.post(
             '/api/tracking/hearteli/data/delete_account/',
             body: {'password': password},
           );
+          return result is Map ? (result['reference'] as String? ?? '') : '';
         },
       ),
     );
-    if (!mounted || deleted != true) return;
+    if (!mounted || reference == null) return;
     setState(() => busy = true);
+    final accountId = widget.sessionStore.userId;
     try {
       await const FlutterSecureStorage().delete(
-        key: 'hearteli_private_draft_${widget.sessionStore.userId ?? ''}',
+        key: 'hearteli_private_draft_${accountId ?? ''}',
       );
-      await widget.sessionStore.clear();
-      if (mounted)
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder:
-                (_) => LoginScreen(
-                  sessionStore: widget.sessionStore,
-                  apiClient: widget.apiClient,
-                ),
-          ),
-          (_) => false,
-        );
-    } catch (e) {
-      if (mounted) setState(() => error = formRequestError(e));
-    } finally {
-      if (mounted) setState(() => busy = false);
+    } catch (_) {
+      // Local cleanup must not prevent sign-out after a successful deletion.
     }
+    try { await widget.sessionStore.clear(); } catch (_) {}
+    if (!mounted) return;
+    final store = widget.sessionStore;
+    final api = widget.apiClient;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (page) => Scaffold(
+        appBar: AppBar(title: const Text('Account deleted')),
+        body: ListView(padding: screenPadding, children: [
+          const StatusPanel(message: 'Your Hearteli account has been deleted and you have been signed out.'),
+          if (reference.isNotEmpty) SelectableText('Reference: $reference'),
+          FilledButton(
+            onPressed: () => Navigator.of(page).pushReplacement(
+              MaterialPageRoute(builder: (_) => LoginScreen(sessionStore: store, apiClient: api)),
+            ),
+            child: const Text('Continue to sign in'),
+          ),
+        ]),
+      )),
+      (_) => false,
+    );
   }
 
   @override
@@ -927,7 +958,7 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
 class _DeletePasswordDialog extends StatefulWidget {
   const _DeletePasswordDialog({required this.onDelete});
 
-  final Future<void> Function(String password) onDelete;
+  final Future<String> Function(String password) onDelete;
 
   @override
   State<_DeletePasswordDialog> createState() => _DeletePasswordDialogState();
@@ -955,15 +986,23 @@ class _DeletePasswordDialogState extends State<_DeletePasswordDialog> {
     }
     setState(() { busy = true; error = null; });
     try {
-      await widget.onDelete(password.text);
-      if (mounted) Navigator.pop(context, true);
+      final reference = await widget.onDelete(password.text);
+      if (mounted) Navigator.pop(context, reference);
     } catch (e) {
       if (!mounted) return;
-      setState(() => error = switch (e) {
-        ApiException(statusCode: 400) => 'That password did not match. Try again.',
-        ApiException(statusCode: 403) => 'Contact Hearteli support to delete this account.',
-        _ => formRequestError(e),
-      });
+      final message = switch (e) {
+        ApiException(code: 'invalid_password') || ApiException(statusCode: 400) =>
+          'Your account was not deleted. Check your password and try again.',
+        ApiException(code: 'deletion_assistance_required') =>
+          'Your account was not deleted. Contact Hearteli support to request deletion.',
+        ApiException(statusCode: 401) || ApiException(statusCode: 403) =>
+          'Your session expired or is not authorised. Sign in again before retrying.',
+        ApiException(statusCode: 429) =>
+          'Too many attempts. Wait a minute before retrying.',
+        _ => 'We could not confirm account deletion. Check your connection or contact Hearteli support.',
+      };
+      final reference = e is ApiException ? e.reference : null;
+      setState(() => error = reference == null ? message : '$message Reference: $reference');
       focusInvalidField(focus);
     } finally {
       if (mounted) setState(() => busy = false);
@@ -979,7 +1018,7 @@ class _DeletePasswordDialogState extends State<_DeletePasswordDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('This permanently removes your account and Hearteli data. This action cannot be undone.'),
+          const Text('This permanently deletes your account. Some accounts with protected records need help from support. Deletion cannot be undone.'),
           const SizedBox(height: 16),
           TextField(
             controller: password,
@@ -992,8 +1031,15 @@ class _DeletePasswordDialogState extends State<_DeletePasswordDialog> {
             decoration: InputDecoration(
               labelText: 'Current password (required)',
               error: inlineFieldError(error),
-              errorMaxLines: 4,
+              errorMaxLines: 7,
             ),
+          ),
+          if (error != null) TextButton(
+            onPressed: busy ? null : () => launchUrl(
+              Uri.https('hearteli.com', '/work/support/'),
+              mode: LaunchMode.externalApplication,
+            ),
+            child: const Text('Contact support'),
           ),
         ],
       ),
@@ -1008,5 +1054,77 @@ class _DeletePasswordDialogState extends State<_DeletePasswordDialog> {
         ),
       ],
     ),
+  );
+}
+
+class _TimezoneDialog extends StatefulWidget {
+  const _TimezoneDialog({required this.apiClient});
+  final ApiClient apiClient;
+  @override
+  State<_TimezoneDialog> createState() => _TimezoneDialogState();
+}
+
+class _TimezoneDialogState extends State<_TimezoneDialog> {
+  late Future<dynamic> zones;
+  String query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    zones = widget.apiClient.get('/api/tracking/hearteli/preferences/timezones/');
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Notification timezone'),
+    content: SizedBox(
+      width: 360,
+      height: MediaQuery.sizeOf(context).height * .48,
+      child: Column(
+        children: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, ''),
+            child: const Text('Use device timezone'),
+          ),
+          TextField(
+            decoration: const InputDecoration(labelText: 'Search timezones'),
+            onChanged: (value) => setState(() => query = value.trim().toLowerCase()),
+          ),
+          Expanded(
+            child: FutureBuilder<dynamic>(
+              future: zones,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return TextButton(
+                    onPressed: () => setState(() {
+                      zones = widget.apiClient.get('/api/tracking/hearteli/preferences/timezones/');
+                    }),
+                    child: const Text('Could not load timezones. Retry'),
+                  );
+                }
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final list = (snapshot.data as List).whereType<String>()
+                    .where((zone) => zone.toLowerCase().replaceAll('_', ' ').contains(query))
+                    .toList();
+                if (list.isEmpty) return const Center(child: Text('No matching timezones.'));
+                return ListView.builder(
+                  itemCount: list.length,
+                  itemBuilder: (context, i) => ListTile(
+                    title: Text(timezoneLabel(list[i])),
+                    subtitle: Text(list[i]),
+                    onTap: () => Navigator.pop(context, list[i]),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+    ],
   );
 }
