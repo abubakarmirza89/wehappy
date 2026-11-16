@@ -77,6 +77,7 @@ urlpatterns = [
     path('work/register/', work_web.register, name='hearteli-work-register'),
     path('work/logout/', WebLogoutView.as_view(next_page='/work/login/'), name='hearteli-work-logout'),
     path('work/', work_web.index, name='hearteli-work-index'),
+    path('work/support/', work_web.support, name='hearteli-work-support'),
     path('work/new/', work_web.create_workspace, name='hearteli-work-create'),
     path('work/<int:pk>/', work_web.dashboard, name='hearteli-work-dashboard'),
     path('work/<int:pk>/invite/', work_web.invite, name='hearteli-work-invite'),

@@ -1,0 +1,13 @@
+<section class="privacy-strip subscription-notice" aria-label="Subscription status">
+  <div>
+    <strong>Your workplace subscription isn’t active</strong>
+    <p>{{ restriction }}</p>
+    {% if is_owner %}
+      <p>Already completed checkout? View billing to check your subscription status.</p>
+      <div class="work-actions"><a class="button" href="{% url 'business-billing' workspace.pk %}">View billing</a><a href="{% url 'hearteli-work-support' %}">Contact support</a></div>
+    {% else %}
+      <p>Ask your workplace owner about activation. Only the owner can access billing.</p>
+      <a href="{% url 'hearteli-work-support' %}">Contact support</a>
+    {% endif %}
+  </div>
+</section>

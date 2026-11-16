@@ -1,31 +1,23 @@
 {% extends 'work/base.html' %}
 {% block title %}{{ page_title }} · {{ workspace.name }} · Hearteli{% endblock %}
 {% block content %}
-<style>
-  .console-main > * + * { margin-top: 20px !important; }
-  .console-main .card,
-  .console-main .panel,
-  .console-main .kpi,
-  .console-main .workspace-message,
-  .console-main .privacy-strip { margin-bottom: 20px !important; }
-  .console-main .kpis,
-  .console-main .dashboard-grid,
-  .console-main .workspace-list { gap: 24px !important; }
-  .console-main .kpis > .kpi,
-  .console-main .dashboard-grid > .panel,
-  .console-main .workspace-list > .card { margin: 0 !important; }
-</style>
-<div class="console">
-  <aside class="sidebar" aria-label="Workspace navigation">
-    <small>{{ workspace.name }}</small>
-    {% for item in workspace_navigation %}<a href="{{ item.url }}" {% if item.active %}class="active" aria-current="page"{% endif %}>{{ item.label }}</a>{% endfor %}
-    <a href="{% url 'hearteli-work-index' %}">Switch workspace</a>
-    <div class="sidebar-note"><strong>Your team's space</strong><p>Personal check-ins stay private.</p></div>
-  </aside>
+<div class="console work-console">
+  <nav class="work-sidebar" aria-label="Workplace navigation">
+    {% include 'work/workplace_nav.html' %}
+  </nav>
+  <details class="work-mobile-nav">
+    <summary>Workplace menu</summary>
+    <nav aria-label="Workplace navigation">{% include 'work/workplace_nav.html' %}</nav>
+  </details>
   <div class="console-main">
     {% for message in messages %}<p class="workspace-message{% if message.tags %} {{ message.tags }}{% endif %}" role="{% if message.tags == 'error' %}alert{% else %}status{% endif %}">{{ message }}</p>{% endfor %}
-    <div class="console-head"><div><span class="eyebrow">Hearteli for Work</span><h1>{{ page_title }}</h1><p class="muted">{{ workspace.name }}{% if workspace.description %} · {{ workspace.description }}{% endif %}</p></div><span class="pill">{% if is_owner %}Owner{% else %}Manager{% endif %}</span></div>
-    {% if not subscription.entitled and section != 'billing' %}<section class="privacy-strip"><div><strong>Subscribe to activate this workspace</strong><p>Choose a subscription before inviting team members or publishing workplace resources. Your personal Hearteli account stays available.</p>{% if is_owner %}<a href="{% url 'business-billing' workspace.pk %}">Choose a subscription plan →</a>{% endif %}</div></section>{% endif %}
+    <header class="work-heading">
+      <span class="eyebrow">Hearteli for Work</span>
+      <p class="workplace-name">{{ workspace.name }}</p>
+      <h1>{{ page_title }}</h1>
+      <span class="pill">Your role: {% if is_owner %}Owner{% else %}Manager{% endif %}</span>
+      {% if section == 'overview' and workspace.description %}<p>{{ workspace.description }}</p>{% endif %}
+    </header>
     {% block workspace_content %}{% endblock %}
   </div>
 </div>

@@ -1,0 +1,16 @@
+{% extends 'work/base.html' %}
+{% block title %}Workplace support · Hearteli{% endblock %}
+{% block content %}
+<section class="panel">
+  <span class="eyebrow">Hearteli for Work</span>
+  <h1>Workplace support</h1>
+  {% if support_email %}
+    <p>For help with billing, access or setting up your workplace, email Hearteli support.</p>
+    <p><a class="button" href="mailto:{{ support_email }}">Email Hearteli support</a></p>
+    <p>Include your workplace name and a short description. Never send passwords, card details or personal check-ins.</p>
+  {% else %}
+    <p>Direct workplace support contact details are not available here yet. For access or subscription questions, ask your workplace owner.</p>
+  {% endif %}
+  <p><a href="{% url 'hearteli-work-index' %}">Back to your workplaces</a></p>
+</section>
+{% endblock %}

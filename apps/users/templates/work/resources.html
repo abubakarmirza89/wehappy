@@ -1,5 +1,38 @@
 {% extends 'work/business_layout.html' %}
 {% block workspace_content %}
-<section class="panel"><h2>Support resources</h2>{% for r in resources %}<article class="resource"><div><a href="{{ r.url }}" rel="noopener noreferrer" target="_blank">{{ r.title }}</a><p>{{ r.description }}</p></div>{% if is_owner %}<form method="post" action="{% url 'hearteli-work-resource-remove' workspace.pk r.pk %}">{% csrf_token %}<button class="secondary">Remove</button></form>{% endif %}</article>{% empty %}<p>No resources published yet.</p>{% endfor %}{% if is_owner %}<form method="post" action="{% url 'hearteli-work-resource-add' workspace.pk %}">{% csrf_token %}<label>Title<input name="title" maxlength="120" required></label><label>HTTPS link<input name="url" type="url" required></label><label>Description<input name="description" maxlength="250"></label><button>Publish resource</button></form>{% endif %}</section>
-
+<p>Organise the support information you want to share with your team. Approved members can find published links in the app under For Work while the workplace subscription is active.</p>
+<section class="panel">
+  <h2>What you can share</h2>
+  <dl class="work-category-list">
+    <div><dt>Employee assistance programme</dt><dd>Details of your workplace counselling service, if available.</dd></div>
+    <div><dt>Wellbeing contacts</dt><dd>People and services your team can turn to.</dd></div>
+    <div><dt>Helpful links</dt><dd>Useful information in one place.</dd></div>
+  </dl>
+  {% if not subscription.entitled %}
+    {% include 'work/subscription_notice.html' with restriction="Resource publishing is unavailable until activation. Personal support remains available separately." %}
+  {% endif %}
+</section>
+{% if is_owner or subscription.entitled %}
+<section class="panel">
+  <h2>Published resources</h2>
+  {% for resource in resources %}
+    <article class="resource">
+      <div><a href="{{ resource.url }}" rel="noopener noreferrer" target="_blank">{{ resource.title }}</a><p>{{ resource.description }}</p></div>
+      {% if is_owner and subscription.entitled %}<form method="post" action="{% url 'hearteli-work-resource-remove' workspace.pk resource.pk %}">{% csrf_token %}<button class="secondary" type="submit" aria-label="Remove {{ resource.title }}">Remove</button></form>{% endif %}
+    </article>
+  {% empty %}<p>No resources published yet.</p>{% endfor %}
+</section>
+{% endif %}
+{% if is_owner and subscription.entitled %}
+<section class="panel">
+  <h2>Add a support resource</h2>
+  <form method="post" action="{% url 'hearteli-work-resource-add' workspace.pk %}">
+    {% csrf_token %}
+    <label for="resource-title">Title</label><input id="resource-title" name="title" maxlength="120" required>
+    <label for="resource-url">HTTPS link</label><input id="resource-url" name="url" type="url" maxlength="500" required>
+    <label for="resource-description">Description (optional)</label><input id="resource-description" name="description" maxlength="250">
+    <button type="submit">Publish resource</button>
+  </form>
+</section>
+{% endif %}
 {% endblock %}

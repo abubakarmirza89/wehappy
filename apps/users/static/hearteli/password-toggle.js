@@ -13,15 +13,23 @@ const setupPasswordToggles = () => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'password-toggle';
-    button.setAttribute('aria-label', 'Show password');
+    const label = input.dataset.passwordLabel || 'password';
+    button.setAttribute('aria-label', 'Show ' + label);
+    if (input.id) button.setAttribute('aria-controls', input.id);
     button.setAttribute('aria-pressed', 'false');
-    button.innerHTML = eye + eyeOff;
+    if (input.dataset.passwordLabel) {
+      wrapper.classList.add('password-field-text');
+      button.textContent = 'Show';
+    } else {
+      button.innerHTML = eye + eyeOff;
+    }
     wrapper.appendChild(button);
 
     button.addEventListener('click', () => {
       const show = input.type === 'password';
       input.type = show ? 'text' : 'password';
-      button.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      button.setAttribute('aria-label', (show ? 'Hide ' : 'Show ') + label);
+      if (input.dataset.passwordLabel) button.textContent = show ? 'Hide' : 'Show';
       button.setAttribute('aria-pressed', show ? 'true' : 'false');
     });
   });

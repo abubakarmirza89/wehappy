@@ -1,54 +1,71 @@
 {% extends 'work/business_layout.html' %}
 {% block workspace_content %}
+<p>See who belongs to your workplace and understand their access.</p>
 <section class="panel">
-  <h2>Members & permissions</h2>
-  <div class="scroll">
-    <table>
-      <thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Manage</th></tr></thead>
+  <h2>Team members</h2>
+  <p>{{ approved_count }} active member{{ approved_count|pluralize }}{% if includes_you %} · Includes you{% endif %}</p>
+  <div class="work-member-table">
+    <table aria-label="Team members">
+      <thead><tr><th scope="col">Person</th><th scope="col">Role</th><th scope="col">Access</th>{% if can_manage_members %}<th scope="col">Manage</th>{% endif %}</tr></thead>
       <tbody>
         {% for m in members %}
           <tr>
-            <td>{{ m.user.name }}<p>{{ m.user.email }}</p></td>
-            <td>{{ m.role }}</td>
-            <td>{{ m.status }}</td>
-            <td>
-              {% if is_owner and m.user_id != workspace.owner_id %}
-                {% if m.status == 'pending' %}
-                  <form method="post" action="{% url 'hearteli-work-approve' workspace.pk m.pk %}">{% csrf_token %}<button>Approve</button></form>
-                {% endif %}
-                <form method="post" action="{% url 'hearteli-work-role' workspace.pk m.pk %}">{% csrf_token %}<select name="role"><option value="employee" {% if m.role == 'employee' %}selected{% endif %}>Employee</option><option value="manager" {% if m.role == 'manager' %}selected{% endif %}>Manager</option></select><button>Save role</button></form>
-                <form method="post" action="{% url 'business-deactivate' workspace.pk m.pk %}">{% csrf_token %}<button class="secondary">Deactivate</button></form>
-              {% endif %}
-            </td>
+            <td><strong>{{ m.user.name }}</strong>{% if m.user_id == user.pk %} <span class="pill">You</span>{% endif %}<p>{{ m.user.email }}</p></td>
+            <td>{{ m.get_role_display }}</td>
+            <td>{% if m.status == 'approved' and m.user.is_active %}Active{% elif m.status == 'pending' %}Pending approval{% else %}No access{% endif %}</td>
+            {% if can_manage_members %}
+              <td>
+                {% if m.user_id == workspace.owner_id %}<span class="small">Owner role cannot be changed here.</span>
+                {% elif m.status != 'rejected' %}
+                  {% if m.status == 'pending' and subscription.entitled %}
+                    <form method="post" action="{% url 'hearteli-work-approve' workspace.pk m.pk %}">{% csrf_token %}<button type="submit">Approve</button></form>
+                  {% endif %}
+                  <form method="post" action="{% url 'hearteli-work-role' workspace.pk m.pk %}">
+                    {% csrf_token %}
+                    <select name="role" aria-label="Role for {{ m.user.name }}"><option value="employee" {% if m.role == 'employee' %}selected{% endif %}>Employee</option><option value="manager" {% if m.role == 'manager' %}selected{% endif %}>Manager</option></select>
+                    <button type="submit">Save role</button>
+                  </form>
+                  <form method="post" action="{% url 'business-deactivate' workspace.pk m.pk %}">{% csrf_token %}<button type="submit" class="secondary">Deactivate</button></form>
+                {% else %}<span class="small">No actions</span>{% endif %}
+              </td>
+            {% endif %}
           </tr>
         {% empty %}
-          <tr><td colspan="4">No members yet.</td></tr>
+          <tr><td colspan="{% if can_manage_members %}4{% else %}3{% endif %}">No members yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  {% if is_owner and not can_manage_members %}<p class="small">Your owner role cannot be changed here.</p>{% endif %}
   {% if signup_invitations %}
     <h3>Awaiting Hearteli signup</h3>
-    <ul class="invitation-list">
-      {% for invitation in signup_invitations %}
-        <li>{{ invitation.email }} — invited by {{ invitation.invited_by.name|default:"workspace owner" }}</li>
-      {% endfor %}
-    </ul>
+    <ul>{% for invitation in signup_invitations %}<li>{{ invitation.email }}</li>{% endfor %}</ul>
   {% endif %}
-  {% if is_owner %}
-    <h3>Invite a member by email</h3>
-    {% if subscription and subscription.entitled %}
-      <p>Already on Hearteli? They’ll get a workspace invitation. New to Hearteli? We’ll email them an invitation to sign up and join {{ workspace.name }}.</p>
-      <form method="post" action="{% url 'hearteli-work-invite' workspace.pk %}">
-        {% csrf_token %}
-        <label for="member-invite-email">Email address</label>
-        <input id="member-invite-email" name="email" type="email" required>
-        <button type="submit">Send invitation</button>
-      </form>
-    {% else %}
-      <p class="workspace-message error" role="alert">An active subscription is required before you can invite members. Choose a plan to activate invitations.</p>
-      <a class="button" href="{% url 'business-billing' workspace.pk %}">Go to Plans & billing</a>
-    {% endif %}
+  <details>
+    <summary>About roles</summary>
+    <p>Learn what each role can access and manage.</p>
+    <dl class="work-roles">
+      <dt>Owner</dt><dd>Manages members, billing and workplace settings. An active subscription is required to invite people and publish support resources.</dd>
+      <dt>Manager</dt><dd>Can view the team, workplace resources and available workplace insights. Cannot manage memberships, publish resources, change settings or access billing.</dd>
+      <dt>Employee</dt><dd>Can access workplace support resources in the app when approved and the subscription is active. Does not have access to this management console.</dd>
+    </dl>
+    <p>Workplace roles do not give access to personal check-ins or private notes.</p>
+  </details>
+</section>
+<section class="panel" id="invite-team" tabindex="-1">
+  <h2>Invite team members</h2>
+  {% if not subscription.entitled %}
+    {% include 'work/subscription_notice.html' with restriction="Invitations are unavailable until your subscription is active." %}
+  {% elif is_owner %}
+    <p>Enter an email address. Existing Hearteli users receive a workplace invitation. New users receive a signup link by email.</p>
+    <form method="post" action="{% url 'hearteli-work-invite' workspace.pk %}">
+      {% csrf_token %}
+      <label for="member-invite-email">Email address</label>
+      <input id="member-invite-email" name="email" type="email" required>
+      <button type="submit">Send invitation</button>
+    </form>
+  {% else %}
+    <p>Only your workplace owner can invite team members.</p>
   {% endif %}
 </section>
 {% endblock %}

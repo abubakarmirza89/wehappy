@@ -32,9 +32,26 @@ def billing_page(request, pk):
         plans=BillingPlan.objects.filter(active=True).order_by('monthly_price', 'member_limit'),
         billing_ready=stripe_ready(),
     )
-    context['checkout_pending'] = request.GET.get('checkout') == 'success' and not (
-        context['subscription'] and context['subscription'].entitled
-    )
+    subscription = context['subscription']
+    checkout_state = ''
+    if subscription and not subscription.entitled and subscription.checkout_session_id:
+        checkout_state = 'unavailable'
+        if context['billing_ready']:
+            try:
+                session = stripe.checkout.Session.retrieve(
+                    subscription.checkout_session_id, api_key=settings.STRIPE_SECRET_KEY,
+                )
+            except stripe.StripeError:
+                pass
+            else:
+                if session.get('mode') == 'subscription' and session.get('client_reference_id') == str(workspace.pk):
+                    if session.get('status') == 'complete':
+                        checkout_state = 'paid' if session.get('payment_status') in ('paid', 'no_payment_required') else 'pending'
+                    elif session.get('status') == 'open':
+                        checkout_state = 'open'
+                    elif session.get('status') == 'expired':
+                        checkout_state = 'expired'
+    context['checkout_state'] = checkout_state
     return render(request,'work/billing.html',context)
 
 
@@ -92,7 +109,7 @@ def checkout(request, pk):
                 if previous.status == 'open':
                     return redirect(previous.url)
                 if previous.status == 'complete':
-                    messages.info(request, 'Your payment is being confirmed. Refresh this page in a moment.')
+                    messages.info(request, 'This checkout is already complete. Check your subscription status in billing before starting another payment.')
                     return redirect('business-billing', pk=pk)
 
             subscription.plan = plan

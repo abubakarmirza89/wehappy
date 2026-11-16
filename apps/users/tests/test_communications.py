@@ -65,6 +65,30 @@ class CommunicationTests(TestCase):
         self.assertTrue(EmailDelivery.objects.filter(kind='password_changed').exists())
         self.assertEqual(EmailDelivery.objects.get(kind='password_reset').path, '')
 
+    def test_web_reset_shows_form_then_success_without_a_second_password_prompt(self):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        payload = {
+            'uid': urlsafe_base64_encode(force_bytes(self.member.pk)),
+            'token': default_token_generator.make_token(self.member),
+        }
+        form = self.client.get('/reset-password/', payload)
+        self.assertContains(form, 'data-password-label="new password"')
+        self.assertContains(form, 'data-password-label="confirmation password"')
+        password = 'NewStrongPass456!'
+        response = self.client.post('/reset-password/', {
+            **payload, 'password': password, 'confirm_password': password,
+        })
+        self.assertContains(response, '<title>Password reset successfully · Hearteli</title>', html=True)
+        self.assertContains(response, '<h1>Password reset successfully</h1>', html=True)
+        self.assertNotContains(response, 'Choose a new password')
+        self.assertNotContains(response, 'type="password"')
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.check_password(password))
+        self.assertContains(self.client.get('/reset-password/', payload), 'Reset link expired or invalid')
+
     def test_reset_unknown_or_inactive_account_has_same_response(self):
         self.member.is_active = False; self.member.save()
         a = self.client.post('/api/forgot-password/', {'email': self.member.email})

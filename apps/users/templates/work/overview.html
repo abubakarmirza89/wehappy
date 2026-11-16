@@ -1,5 +1,27 @@
 {% extends 'work/business_layout.html' %}
 {% block workspace_content %}
-<section class="kpis"><article class="kpi mint"><span>Approved members</span><strong>{{ approved_count }}</strong></article><article class="kpi blue"><span>Pending invitations</span><strong>{{ pending_count }}</strong></article><article class="kpi pink"><span>Resources</span><strong>{{ resources|length }}</strong></article></section><div class="dashboard-grid"><section class="panel"><h2>Subscription</h2><p>{{ subscription.plan.name|default:'No plan selected' }} · {{ subscription.status|default:'Inactive' }}</p><p>Renews / ends {{ subscription.period_end|default:'After activation' }}</p><p>Seats: {{ members|length }} / {{ subscription.plan.member_limit|default:'—' }}</p>{% if not subscription.entitled and is_owner %}<a href="{% url 'business-billing' workspace.pk %}">Subscribe to activate your workspace →</a>{% endif %}</section><section class="panel"><h2>Start with your team</h2><a href="{% url 'business-page' workspace.pk 'members' %}">Manage members →</a><a href="{% url 'business-page' workspace.pk 'resources' %}">Publish a support resource →</a><a href="{% url 'business-page' workspace.pk 'insights' %}">Review privacy boundaries →</a></section></div>
-
+{% if subscription.entitled %}
+  <section class="privacy-strip"><div><strong>Subscription active</strong>{% if subscription.period_end %}<p>Current period ends {{ subscription.period_end|date:"j M Y" }}.</p>{% endif %}</div></section>
+{% else %}
+  {% include 'work/subscription_notice.html' with restriction="You can review your team. Invitations and resource publishing require an active subscription." %}
+{% endif %}
+{% include 'work/workplace_counts.html' %}
+<section class="panel">
+  <h2>Set up your workplace</h2>
+  <ul class="work-task-list">
+    <li><a href="{% url 'business-page' workspace.pk 'members' %}">Review your team →</a></li>
+    {% if is_owner %}
+      <li><a href="{% url 'business-page' workspace.pk 'settings' %}">Review workplace settings →</a></li>
+      {% if subscription.entitled %}
+        <li><a href="{% url 'business-page' workspace.pk 'members' %}#invite-team">Invite your team →</a></li>
+        <li><a href="{% url 'business-page' workspace.pk 'resources' %}">Add support resources →</a></li>
+      {% else %}
+        <li>Invite your team <span class="pill">Requires activation</span></li>
+        <li>Add support resources <span class="pill">Requires activation</span></li>
+      {% endif %}
+    {% endif %}
+    <li><a href="{% url 'business-page' workspace.pk 'privacy' %}">Review privacy boundaries →</a></li>
+  </ul>
+  <p>Personal check-ins and private notes stay private.</p>
+</section>
 {% endblock %}

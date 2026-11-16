@@ -1,11 +1,22 @@
 {% extends 'work/business_layout.html' %}
 {% block workspace_content %}
-{% if checkout_pending %}<p class="workspace-message" role="status">Checkout completed. We’re confirming your subscription now; this page will update shortly.</p>{% endif %}
+{% if checkout_state == 'paid' or checkout_state == 'pending' or checkout_state == 'unavailable' %}
+<section class="privacy-strip" aria-label="Checkout status"><div>
+  {% if checkout_state == 'paid' %}
+    <strong>Your subscription hasn’t activated yet</strong><p>Stripe reports a completed checkout. If access is still locked, contact support before paying again.</p>
+  {% elif checkout_state == 'pending' %}
+    <strong>Your payment isn’t confirmed yet</strong><p>Checkout is complete, but Stripe has not confirmed payment. Check its status before trying again.</p>
+  {% else %}
+    <strong>We couldn’t check the previous checkout</strong><p>Check again or contact support before starting another payment.</p>
+  {% endif %}
+  <div class="work-actions"><a class="button" href="{% url 'business-billing' workspace.pk %}">Check payment status</a><a href="{% url 'hearteli-work-support' %}">Contact support</a></div>
+</div></section>
+{% endif %}
 <section class="panel">
-  <h2>Workspace subscription</h2>
+  <h2>Workplace subscription</h2>
   {% if subscription %}
     <p>Plan: {{ subscription.plan.name }}</p>
-    <p>Status: {% if subscription.entitled %}Active{% elif subscription.period_end and subscription.period_end <= current_time %}Expired{% else %}{{ subscription.status|title }}{% endif %}</p>
+    <p>Status: {% if subscription.entitled %}Active{% elif subscription.period_end and subscription.period_end <= current_time %}Expired{% else %}Subscription not active{% endif %}</p>
     {% if subscription.period_end %}<p>Current period ends: {{ subscription.period_end }}</p>{% endif %}
     <p>Seats: {{ subscription.plan.member_limit }}</p>
     {% if subscription.customer_id %}
@@ -25,8 +36,8 @@
         <h3>{{ plan.name }}</h3>
         <p><strong>{{ plan.currency|upper }} {{ plan.monthly_price }}</strong> / month</p>
         <p>Up to {{ plan.member_limit }} team members</p>
-        {% if not subscription.entitled and billing_ready %}
-          <form method="post" action="{% url 'business-checkout' workspace.pk %}">{% csrf_token %}<input type="hidden" name="plan" value="{{ plan.pk }}"><button type="submit">Subscribe</button></form>
+        {% if not subscription.entitled and billing_ready and checkout_state != "paid" and checkout_state != "pending" and checkout_state != "unavailable" %}
+          <form method="post" action="{% url 'business-checkout' workspace.pk %}">{% csrf_token %}<input type="hidden" name="plan" value="{{ plan.pk }}"><button type="submit">{% if checkout_state == "open" %}Continue checkout{% else %}Subscribe{% endif %}</button></form>
         {% elif subscription.entitled %}
           <p>Your workspace is subscribed to this service.</p>
         {% endif %}

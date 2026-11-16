@@ -4,7 +4,7 @@ from django.http import HttpResponseForbidden
 from django.views.decorators.http import require_POST, require_http_methods
 from django.db import transaction
 from .work_web import admin_workspace
-from .models import WorkspaceMembership, WorkspaceRoleAudit
+from .models import WorkspaceRoleAudit
 from apps.users.models import BusinessSubscription
 
 from django import forms
@@ -24,7 +24,7 @@ class WorkspaceSettingsForm(forms.ModelForm):
 class RotateInviteForm(forms.Form):
     confirm_rotate=forms.BooleanField(label='I understand that the previous invitation code will stop working.')
 
-PAGE_TITLES={'overview':'Overview','members':'Members & roles','resources':'Support resources','insights':'Insights','privacy':'Privacy & access','billing':'Plans & billing','settings':'Workspace settings'}
+PAGE_TITLES={'overview':'Overview','members':'Members & roles','resources':'Support resources','insights':'Workplace insights','privacy':'Privacy & access','billing':'Plans & billing','settings':'Workplace settings'}
 
 def workspace_context(workspace,user,section):
     owner=workspace.owner_id==user.pk
@@ -33,17 +33,32 @@ def workspace_context(workspace,user,section):
         if key in ('billing','settings') and not owner: continue
         url=reverse('business-billing',args=[workspace.pk]) if key=='billing' else reverse('hearteli-work-dashboard',args=[workspace.pk]) if key=='overview' else reverse('business-page',args=[workspace.pk,key])
         navigation.append({'label':label,'url':url,'active':key==section})
-    members=workspace.memberships.select_related('user')
-    return {'workspace':workspace,'section':section,'page_title':PAGE_TITLES[section],
-        'current_time':timezone.now(),'is_owner':owner,'workspace_navigation':navigation,'members':members,
-        'approved_count':members.filter(status='approved').count(),
-        'pending_count':members.filter(status='pending').count(),
-        'signup_invitations':workspace.signup_invitations.filter(
-            claimed_at__isnull=True,expires_at__gt=timezone.now()
-        ).select_related('invited_by'),
-        'resources':workspace.resources.all(),
-        'subscription':BusinessSubscription.objects.filter(workspace=workspace).select_related('plan').first(),
-        'role_events':workspace.role_events.select_related('actor','member').order_by('-created_at')[:30]}
+    from .subscriptions import seat_usage
+
+    now = timezone.now()
+    members = list(workspace.memberships.select_related('user'))
+    approved = [m for m in members if m.status == 'approved' and m.user.is_active]
+    pending = [m for m in members if m.status == 'pending']
+    invitations = list(workspace.signup_invitations.filter(
+        claimed_at__isnull=True, expires_at__gt=now,
+    ).exclude(email__in=workspace.memberships.values_list('user__email', flat=True)).select_related('invited_by'))
+    subscription = BusinessSubscription.objects.filter(workspace=workspace).select_related('plan').first()
+    seats_used = seat_usage(workspace, now) if section == 'insights' and subscription and subscription.entitled else None
+    return {
+        'workspace': workspace, 'section': section, 'page_title': PAGE_TITLES[section],
+        'current_time': now, 'is_owner': owner, 'workspace_navigation': navigation,
+        'members': members, 'approved_count': len(approved),
+        'includes_you': any(m.user_id == user.pk for m in approved),
+        'pending_count': len(pending) + len({i.email.lower() for i in invitations}),
+        'signup_invitations': invitations,
+        'can_manage_members': owner and any(m.user_id != workspace.owner_id and m.status != 'rejected' for m in members),
+        'resources': workspace.resources.all(),
+        'subscription': subscription,
+        'seats_used': seats_used,
+        'seats_available': seats_used is not None and seats_used < subscription.plan.member_limit,
+        'role_events': workspace.role_events.select_related('actor','member').order_by('-created_at')[:30],
+    }
+
 
 @login_required(login_url='/work/login/')
 @require_http_methods(['GET','POST'])
@@ -53,9 +68,6 @@ def page(request,pk,section='overview'):
     if workspace is None: return HttpResponseForbidden('Workspace administrator access required.')
     owner=workspace.owner_id==request.user.pk
     if section=='settings' and not owner: return HttpResponseForbidden('Owner access required.')
-    subscription=BusinessSubscription.objects.filter(workspace=workspace).first()
-    if workspace.workspace_type=='office' and section=='resources' and (not subscription or not subscription.entitled):
-        return render(request,'work/benefit_unavailable.html',workspace_context(workspace,request.user,section))
     if request.method=='POST' and section!='settings': return HttpResponseForbidden('Use the section action form.')
     action=request.POST.get('action','details')
     settings_form=WorkspaceSettingsForm(request.POST if request.method=='POST' and action=='details' else None,instance=workspace)

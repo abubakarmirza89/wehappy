@@ -12,3 +12,9 @@
 - Verify workplace invitation email, nudge replies and account deletion with empty or invalid values, offline mode, and service errors. Check that input stays visible, focus returns to the field, TalkBack announces the error, and rapid taps do not submit twice. Repeat with large text, keyboard and switch access on Android.
 - The legacy therapist application is now read-only. New submissions are rejected on mobile API and web, including requests from older builds. Legacy admin records cannot be approved through that queue. Existing therapist credentials, published profiles and appointments are handled separately.
 - Keep the structured therapist application ticket open. The release guard does not replace the approved application, evidence, declarations, drafts, retention and notification workflows.
+
+### Workplace web QA (#27–29, #31–35)
+
+- Workplace support links open `/work/support/`. Set `HEARTELI_WORK_SUPPORT_EMAIL` to the approved staffed mailbox and confirm delivery before release.
+- Billing checks the saved Stripe checkout when the owner opens billing. A redirect query parameter alone does not confirm payment. This check does not activate a subscription; the checkout reconciliation defect is tracked separately in #30.
+- Check desktop and 320px layouts, keyboard navigation, owner and manager views, first-time and returning workplaces, and both password toggles. Test active versus inactive workplace resources with approved members in the app.
