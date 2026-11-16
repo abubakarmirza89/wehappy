@@ -33,13 +33,28 @@ class PracticeBillingTests(TestCase):
         self.assertEqual(self.api.post(url,{'amount':'60','payout_account':'bank'}).status_code,400)
         WithdrawalRequest.objects.update(status='rejected')
         self.assertEqual(balance(self.therapist)['available_balance'],85)
-    def test_application_does_not_self_approve(self):
-        url='/api/users/therapist/application/'
-        payload={'bio':'Professional bio','credentials':'MSc','license_number':'ABC','location':'Karachi','modalities':'Online','status':'approved'}
-        self.assertEqual(self.api.post(url,payload).status_code,201)
-        self.member.refresh_from_db();self.assertFalse(self.member.is_therapist)
-        self.assertEqual(TherapistApplication.objects.get(user=self.member).status,'pending')
-        self.assertEqual(self.api.post(url,payload).status_code,400)
+    def test_legacy_application_cannot_enter_review_from_api_or_web(self):
+        url = '/api/users/therapist/application/'
+        payload = {
+            'bio': 'Professional bio', 'credentials': 'MSc',
+            'license_number': 'ABC', 'location': 'Karachi',
+            'modalities': 'Online', 'status': 'approved',
+        }
+        self.client.force_login(self.member)
+        for body in ({}, payload, payload):
+            with self.subTest(body=body):
+                response = self.api.post(url, body)
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(response.data['code'], 'applications_paused')
+                self.assertEqual(self.client.post('/practice/apply/', body).status_code, 409)
+        self.assertFalse(TherapistApplication.objects.filter(user=self.member).exists())
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_therapist)
+        self.assertEqual(self.api.get(url).data['status'], 'not_applied')
+        page = self.client.get('/practice/apply/')
+        self.assertContains(page, 'New therapist applications are not available')
+        self.assertNotContains(page, 'Submit application')
+
     def test_chat_permissions_and_cancelled_read_only(self):
         url=f'/api/users/appointment/{self.a.pk}/messages/'
         self.assertEqual(self.api.post(url,{'body':'Hello'}).status_code,201)
@@ -276,14 +291,34 @@ class PracticeBillingTests(TestCase):
         subscription.refresh_from_db()
         self.assertFalse(subscription.entitled)
 
-    def test_admin_approval_enables_role_and_profile(self):
+    def test_legacy_application_status_remains_private_and_admin_read_only(self):
         from apps.users.admin import TherapistApplicationAdmin
         from django.contrib import admin
-        from types import SimpleNamespace
-        app=TherapistApplication.objects.create(user=self.member,bio='Bio',credentials='MSc',license_number='ABC',location='Karachi')
-        TherapistApplicationAdmin(TherapistApplication,admin.site).approve(SimpleNamespace(user=self.other),TherapistApplication.objects.filter(pk=app.pk))
-        self.member.refresh_from_db();self.assertTrue(self.member.is_therapist)
-        self.assertTrue(self.member.therapist_profile.is_active)
+        from django.test import RequestFactory
+
+        app = TherapistApplication.objects.create(
+            user=self.member, bio='Bio', credentials='MSc',
+            license_number='ABC', location='Karachi', review_note='Internal note',
+        )
+        request = RequestFactory().get('/admin/')
+        request.user = User.objects.create_superuser(
+            name='Reviewer', email='reviewer@example.com',
+            password='StrongPass123', phone_number='4',
+        )
+        legacy_admin = TherapistApplicationAdmin(TherapistApplication, admin.site)
+        self.assertFalse(legacy_admin.has_add_permission(request))
+        self.assertFalse(legacy_admin.has_change_permission(request, app))
+        self.assertFalse(legacy_admin.get_actions(request))
+
+        url = '/api/users/therapist/application/'
+        self.assertEqual(self.api.get(url).data['status'], 'pending')
+        self.assertNotIn('review_note', self.api.get(url).data)
+        self.assertNotIn('license_number', self.api.get(url).data)
+        self.assertEqual(self.api.post(url, {}).status_code, 409)
+        app.refresh_from_db()
+        self.assertEqual(app.status, 'pending')
+        self.api.force_authenticate(self.other)
+        self.assertEqual(self.api.get(url).data['status'], 'not_applied')
 
     def test_provider_web_booking_and_self_booking_blocked(self):
         profile=self.therapist.therapist_profile;profile.hourly_rate=100;profile.is_available=True;profile.save()

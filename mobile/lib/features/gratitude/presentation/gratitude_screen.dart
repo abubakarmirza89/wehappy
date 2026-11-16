@@ -1,3 +1,4 @@
+import '../../../core/validation/form_feedback.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
@@ -36,7 +37,7 @@ class _GratitudeScreenState extends State<GratitudeScreen> {
   Future<void> _save() async {
     if ([_one, _two, _three].any((field) => field.text.trim().isEmpty)) { AppToast.error(context, 'Complete all three gratitude entries.'); return; }
     setState(() => _saving = true);
-    try { final body = {'gratitude_1': _one.text.trim(), 'gratitude_2': _two.text.trim(), 'gratitude_3': _three.text.trim()}; if (_entryId == null) { final created = await widget.apiClient.post('/api/tracking/gratitude-entries/', body: body); if (created is Map && created['id'] != null) _entryId = (created['id'] as num).toInt(); } else { await widget.apiClient.patch('/api/tracking/gratitude-entries/$_entryId/', body: body); } if (mounted) AppToast.success(context, 'Your gratitude entry was saved.'); } catch (error) { if (mounted) AppToast.error(context, '$error'); } finally { if (mounted) setState(() => _saving = false); }
+    try { final body = {'gratitude_1': _one.text.trim(), 'gratitude_2': _two.text.trim(), 'gratitude_3': _three.text.trim()}; if (_entryId == null) { final created = await widget.apiClient.post('/api/tracking/gratitude-entries/', body: body); if (created is Map && created['id'] != null) _entryId = (created['id'] as num).toInt(); } else { await widget.apiClient.patch('/api/tracking/gratitude-entries/$_entryId/', body: body); } if (mounted) AppToast.success(context, 'Your gratitude entry was saved.'); } catch (error) { if (mounted) AppToast.error(context, formRequestError(error)); } finally { if (mounted) setState(() => _saving = false); }
   }
 
   @override

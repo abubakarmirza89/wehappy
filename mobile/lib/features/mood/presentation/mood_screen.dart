@@ -1,3 +1,4 @@
+import '../../../core/validation/form_feedback.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
@@ -38,7 +39,7 @@ class _MoodScreenState extends State<MoodScreen> {
     try {
       await widget.apiClient.post('/api/tracking/mood-check-ins/today_check_in/', body: {'mood_ids': _selected.toList(), 'notes': _notes.text.trim()});
       if (mounted) setState(() => _message = 'Your check-in was saved. Thank you for checking in.');
-    } catch (error) { if (mounted) setState(() => _message = '$error'); } finally { if (mounted) setState(() => _saving = false); }
+    } catch (error) { if (mounted) setState(() => _message = formRequestError(error)); } finally { if (mounted) setState(() => _saving = false); }
   }
 
   @override

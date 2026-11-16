@@ -1,3 +1,4 @@
+import '../../../core/validation/form_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -40,7 +41,7 @@ class _SupportInboxScreenState extends State<SupportInboxScreen> {
           error = null;
         });
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -189,7 +190,7 @@ class _NudgeDetailState extends State<NudgeDetail> {
         setState(() => nudge = Map<String, dynamic>.from(data));
       }
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) showCalmMessage(context, formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -204,7 +205,7 @@ class _NudgeDetailState extends State<NudgeDetail> {
       }
       if (mounted) setState(() => showAcknowledgement = true);
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) showCalmMessage(context, formRequestError(e));
     }
   }
 
@@ -428,7 +429,7 @@ class SupportOutcomeScreen extends StatefulWidget {
 }
 
 class _SupportOutcomeScreenState extends State<SupportOutcomeScreen> {
-  String? choice;
+  String? choice, saveError;
   final note = TextEditingController();
   bool busy = false;
   @override
@@ -459,23 +460,29 @@ class _SupportOutcomeScreenState extends State<SupportOutcomeScreen> {
                 title: Text(e.value),
                 value: e.key,
                 groupValue: choice,
-                onChanged: (v) => setState(() => choice = v),
+                onChanged: (v) => setState(() { choice = v; saveError = null; }),
               ),
             const SizedBox(height: 14),
             TextField(
               controller: note,
               maxLines: 3,
               maxLength: 500,
+              readOnly: busy,
+              onChanged: (_) {
+                if (saveError != null) setState(() => saveError = null);
+              },
               decoration: const InputDecoration(
                 labelText: 'Private note (optional)',
               ),
             ),
             const SizedBox(height: 18),
+            if (saveError != null)
+              Semantics(liveRegion: true, child: StatusPanel(message: saveError!)),
             FilledButton(
               onPressed: choice == null || busy
                   ? null
                   : () async {
-                      setState(() => busy = true);
+                      setState(() { busy = true; saveError = null; });
                       try {
                         await widget.apiClient.post(
                           '/api/tracking/hearteli/outcomes/',
@@ -487,12 +494,12 @@ class _SupportOutcomeScreenState extends State<SupportOutcomeScreen> {
                         );
                         if (context.mounted) Navigator.pop(context);
                       } catch (e) {
-                        if (context.mounted) showCalmMessage(context, '$e');
+                        if (mounted) setState(() => saveError = formRequestError(e));
                       } finally {
                         if (mounted) setState(() => busy = false);
                       }
                     },
-              child: const Text('Save privately'),
+              child: Text(busy ? 'Saving…' : 'Save privately'),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context),

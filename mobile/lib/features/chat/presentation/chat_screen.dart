@@ -1,3 +1,4 @@
+import '../../../core/validation/form_feedback.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
@@ -46,7 +47,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       final updated = await widget.apiClient.post('/api/tracking/chat-conversations/$_conversationId/send_message/', body: {'message': text});
       setState(() { _messages = (updated['messages'] as List?) ?? [..._messages, {'sender': 'user', 'message_text': text}]; _message.clear(); });
-    } catch (error) { if (mounted) AppToast.error(context, '$error'); }
+    } catch (error) { if (mounted) AppToast.error(context, formRequestError(error)); }
   }
 
   @override

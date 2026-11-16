@@ -199,7 +199,7 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
       );
       await load();
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) showCalmMessage(context, formRequestError(e));
     }
   }
 
@@ -771,50 +771,22 @@ class _DataSettingsState extends State<DataSettings> {
   }
 
   Future<void> delete() async {
-    final password = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    if (busy) return;
+    final deleted = await showDialog<bool>(
       context: context,
-      builder:
-          (dialog) => AlertDialog(
-            title: const Text('Delete your account?'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'This permanently removes your account and Hearteli data. This action cannot be undone.',
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: password,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Current password',
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialog, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(dialog, true),
-                child: const Text('Delete account'),
-              ),
-            ],
-          ),
+      barrierDismissible: false,
+      builder: (_) => _DeletePasswordDialog(
+        onDelete: (password) async {
+          await widget.apiClient.post(
+            '/api/tracking/hearteli/data/delete_account/',
+            body: {'password': password},
+          );
+        },
+      ),
     );
-    if (confirmed != true) {
-      password.dispose();
-      return;
-    }
+    if (!mounted || deleted != true) return;
     setState(() => busy = true);
     try {
-      await widget.apiClient.post(
-        '/api/tracking/hearteli/data/delete_account/',
-        body: {'password': password.text},
-      );
       await const FlutterSecureStorage().delete(
         key: 'hearteli_private_draft_${widget.sessionStore.userId ?? ''}',
       );
@@ -833,7 +805,6 @@ class _DataSettingsState extends State<DataSettings> {
     } catch (e) {
       if (mounted) setState(() => error = formRequestError(e));
     } finally {
-      password.dispose();
       if (mounted) setState(() => busy = false);
     }
   }
@@ -950,5 +921,92 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
         child: const Text('Prepare ZIP'),
       ),
     ],
+  );
+}
+
+class _DeletePasswordDialog extends StatefulWidget {
+  const _DeletePasswordDialog({required this.onDelete});
+
+  final Future<void> Function(String password) onDelete;
+
+  @override
+  State<_DeletePasswordDialog> createState() => _DeletePasswordDialogState();
+}
+
+class _DeletePasswordDialogState extends State<_DeletePasswordDialog> {
+  final password = TextEditingController();
+  final focus = FocusNode();
+  String? error;
+  bool busy = false;
+
+  @override
+  void dispose() {
+    password.dispose();
+    focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> submit() async {
+    if (busy) return;
+    if (password.text.isEmpty) {
+      setState(() => error = 'Enter your current password.');
+      focusInvalidField(focus);
+      return;
+    }
+    setState(() { busy = true; error = null; });
+    try {
+      await widget.onDelete(password.text);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => error = switch (e) {
+        ApiException(statusCode: 400) => 'That password did not match. Try again.',
+        ApiException(statusCode: 403) => 'Contact Hearteli support to delete this account.',
+        _ => formRequestError(e),
+      });
+      focusInvalidField(focus);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !busy,
+    child: AlertDialog(
+      scrollable: true,
+      title: const Text('Delete your account?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('This permanently removes your account and Hearteli data. This action cannot be undone.'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: password,
+            focusNode: focus,
+            obscureText: true,
+            readOnly: busy,
+            onChanged: (_) {
+              if (error != null) setState(() => error = null);
+            },
+            decoration: InputDecoration(
+              labelText: 'Current password (required)',
+              error: inlineFieldError(error),
+              errorMaxLines: 4,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: busy ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: busy ? null : submit,
+          child: Text(busy ? 'Deleting…' : 'Delete account'),
+        ),
+      ],
+    ),
   );
 }

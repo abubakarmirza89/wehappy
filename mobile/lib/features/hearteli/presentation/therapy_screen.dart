@@ -898,7 +898,7 @@ class _ShareTherapyContextState extends State<ShareTherapyContext> {
       final data = await widget.apiClient.get('/api/tracking/mood-check-ins/');
       if (mounted) setState(() => checkins = items(data));
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     }
   }
 
@@ -948,7 +948,7 @@ class _ShareTherapyContextState extends State<ShareTherapyContext> {
         Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -1086,7 +1086,7 @@ class TherapistReviewsScreen extends StatelessWidget {
                               'Report sent for moderation.',
                             );
                         } catch (e) {
-                          if (context.mounted) showCalmMessage(context, '$e');
+                          if (context.mounted) showCalmMessage(context, formRequestError(e));
                         }
                       },
                       child: const Text('Report review'),

@@ -41,7 +41,7 @@ class _CircleScreenState extends State<CircleScreen> {
       final data = await widget.apiClient.get('/api/tracking/hearteli/circle/');
       if (mounted) setState(() => connections = items(data));
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = formRequestError(e));
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -248,7 +248,7 @@ class _CircleScreenState extends State<CircleScreen> {
             ),
       );
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) showCalmMessage(context, formRequestError(e));
     }
   }
 
@@ -421,7 +421,7 @@ class _CircleScreenState extends State<CircleScreen> {
       );
       await load();
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) showCalmMessage(context, formRequestError(e));
     }
   }
 
@@ -549,7 +549,7 @@ class _CircleInviteScannerScreenState extends State<CircleInviteScannerScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      'Unable to open the camera. Check camera permission in your device settings and try again.\n$error',
+                      'Unable to open the camera. Check camera permission in your device settings and try again.',
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -601,7 +601,7 @@ class _CircleDetailState extends State<CircleDetail> {
       }
       return true;
     } catch (e) {
-      if (mounted) showCalmMessage(context, '$e');
+      if (mounted) showCalmMessage(context, formRequestError(e));
       return false;
     } finally {
       if (mounted) setState(() => busy = false);
