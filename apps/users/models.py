@@ -96,9 +96,14 @@ class Therapist(models.Model):
 
 
 @receiver(post_save, sender=User)
-def create_therapist_profile(sender, instance, created, **kwargs):
-    if created and instance.is_therapist:
-        Therapist.objects.create(user=instance)
+def sync_therapist_profile(sender, instance, **kwargs):
+    if instance.is_therapist:
+        Therapist.objects.get_or_create(user=instance)
+    else:
+        Therapist.objects.filter(
+            user=instance,
+            directory_published_at__isnull=False,
+        ).update(directory_published_at=None)
 
 
 class Appointment(models.Model):

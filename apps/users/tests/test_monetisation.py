@@ -39,6 +39,31 @@ class MonetisationTests(TestCase):
                                 'time': '10:00', 'location': 'Online', 'reason': 'Support'})
         self.assertEqual(result.status_code, 400)
 
+    def test_role_checkbox_creates_profile_and_removal_unpublishes_it(self):
+        self.user.is_therapist = True
+        self.user.save(update_fields=['is_therapist'])
+        profile = Therapist.objects.get(user=self.user)
+        self.assertEqual(profile.verification_status, 'pending')
+        self.assertIsNone(profile.directory_published_at)
+
+        profile.verification_status = 'verified'
+        profile.verification_expires_at = self.now + timedelta(days=365)
+        profile.directory_published_at = self.now
+        profile.save()
+        self.user.is_therapist = False
+        self.user.save(update_fields=['is_therapist'])
+
+        profile.refresh_from_db()
+        self.assertEqual(profile.verification_status, 'verified')
+        self.assertIsNone(profile.directory_published_at)
+
+        self.user.is_therapist = True
+        self.user.save(update_fields=['is_therapist'])
+        self.assertEqual(Therapist.objects.filter(user=self.user).count(), 1)
+        profile.refresh_from_db()
+        self.assertEqual(profile.verification_status, 'verified')
+        self.assertIsNone(profile.directory_published_at)
+
     def test_directory_publication_sends_welcome_email_once(self):
         from django.contrib import admin
         from django.core import mail
