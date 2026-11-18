@@ -43,6 +43,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
   int? duration;
   Map<String, dynamic> applied = {};
   bool loading = true, loadingMore = false;
+  bool filtersExpanded = false;
   String? error, feeError, pageError;
   int? nextAfter;
   int resultCount = 0, marketCount = 0;
@@ -58,6 +59,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
 
   Map<String, dynamic> get directoryQuery => {
     'include_facets': 'true',
+    'market': market,
     if (localeCurrency != null) 'locale_currency': localeCurrency,
     if (currencyOverride != null) 'fee_currency': currencyOverride,
     ...applied,
@@ -154,6 +156,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
       if (fee.isNotEmpty) ...{'max_fee': fee, if (feeCurrency.isNotEmpty) 'fee_currency': feeCurrency},
       if (duration != null) 'duration': duration,
     };
+    filtersExpanded = false;
     load();
   }
 
@@ -162,6 +165,12 @@ class _TherapyScreenState extends State<TherapyScreen> {
     maxFee.clear();
     selectedSpecialties = {};
     duration = null;
+    applied = {};
+    if (market.isNotEmpty) {
+      filtersExpanded = false;
+      changeMarket('');
+      return;
+    }
     apply();
   }
 
@@ -190,7 +199,12 @@ class _TherapyScreenState extends State<TherapyScreen> {
   }
 
   Future<void> changeMarket(String value) async {
-    setState(() { loading = true; error = null; });
+    final previousMarket = market;
+    setState(() {
+      loading = true;
+      error = null;
+      market = value;
+    });
     try {
       await widget.apiClient.patch('/api/tracking/hearteli/preferences/update_mine/',
           body: {'directory_market': value});
@@ -204,6 +218,7 @@ class _TherapyScreenState extends State<TherapyScreen> {
     } catch (_) {
       if (mounted) setState(() {
         loading = false;
+        market = previousMarket;
         error = 'Could not save your market. Please try again.';
       });
     }
@@ -280,106 +295,114 @@ class _TherapyScreenState extends State<TherapyScreen> {
             subtitle: 'Professional support is here if you want it.',
           ),
           const SizedBox(height: 18),
-          if (markets.isNotEmpty)
-            DropdownButtonFormField<String>(
-              key: ValueKey('market-$market'),
-              value: market,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Market'),
-              items: [
-                const DropdownMenuItem(value: '', child: Text('All markets')),
-                for (final option in markets)
-                  DropdownMenuItem(value: option['code'] as String, child: Text('${option['name']}')),
-              ],
-              onChanged: loading || loadingMore ? null : (value) {
-                if (value != null && value != market) changeMarket(value);
-              },
-            ),
-          if (currencies.contains(feeCurrency)) ...[
+          OutlinedButton.icon(
+            onPressed: () => setState(() => filtersExpanded = !filtersExpanded),
+            icon: Icon(filtersExpanded ? Icons.expand_less : Icons.tune),
+            label: Text(filtersExpanded ? 'Hide filters' : 'Filters'),
+          ),
+          if (filtersExpanded) ...[
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: ValueKey('currency-$feeCurrency'),
-              value: feeCurrency,
-              decoration: const InputDecoration(labelText: 'Fee display and filter currency'),
+            if (markets.isNotEmpty)
+              DropdownButtonFormField<String>(
+                key: ValueKey('market-$market'),
+                value: market,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Market'),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('All markets')),
+                  for (final option in markets)
+                    DropdownMenuItem(value: option['code'] as String, child: Text('${option['name']}')),
+                ],
+                onChanged: loading || loadingMore ? null : (value) {
+                  if (value != null && value != market) changeMarket(value);
+                },
+              ),
+            if (currencies.contains(feeCurrency)) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: ValueKey('currency-$feeCurrency'),
+                value: feeCurrency,
+                decoration: const InputDecoration(labelText: 'Fee display and filter currency'),
+                items: [
+                  for (final currency in currencies)
+                    DropdownMenuItem(value: currency, child: Text(currency)),
+                ],
+                onChanged: loading || loadingMore ? null : (value) {
+                  if (value != null && value != feeCurrency) changeCurrency(value);
+                },
+              ),
+            ],
+            if (missingRates)
+              const Text('Some estimates are unavailable. Original prices are still shown; a fee cap excludes prices we cannot compare.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: query,
+              maxLength: 100,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                labelText: 'Search by name',
+                counterText: '',
+              ),
+              onSubmitted: (_) { if (!loading && !loadingMore) apply(); },
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: loading || specialties.isEmpty ? null : chooseSpecialties,
+              child: Text(selectedSpecialties.isEmpty
+                  ? 'Any specialty'
+                  : '${selectedSpecialties.length} specialties selected'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: maxFee,
+              decoration: InputDecoration(
+                labelText: feeCurrency.isEmpty ? 'Maximum fee' : 'Maximum fee ($feeCurrency)',
+                hintText: 'Any price',
+                error: inlineFieldError(feeError),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
+            const SizedBox(height: 12),
+            DropdownButton<int>(
+              value: duration,
+              hint: const Text('Any session duration'),
+              isExpanded: true,
               items: [
-                for (final currency in currencies)
-                  DropdownMenuItem(value: currency, child: Text(currency)),
+                const DropdownMenuItem(value: null, child: Text('Any session duration')),
+                for (final value in {...durations, if (duration != null) duration!})
+                  DropdownMenuItem(value: value, child: Text('$value minutes')),
               ],
-              onChanged: loading || loadingMore ? null : (value) {
-                if (value != null && value != feeCurrency) changeCurrency(value);
-              },
+              onChanged: loading ? null : (value) => setState(() => duration = value),
             ),
+            Wrap(
+              spacing: 8,
+              children: [
+                OutlinedButton(onPressed: loading || loadingMore ? null : apply, child: const Text('Apply filters')),
+                TextButton(onPressed: loading || loadingMore ? null : clear, child: const Text('Clear all')),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final entry in applied.entries)
+                  if (entry.key == 'fee_currency')
+                    const SizedBox.shrink()
+                  else if (entry.key == 'specialties')
+                    for (final value in (entry.value as String).split(','))
+                      InputChip(label: Text(value), onDeleted: loading || loadingMore ? null : () => removeFilter(entry.key, value))
+                  else
+                    InputChip(
+                      label: Text(switch (entry.key) {
+                        'max_fee' => 'Up to $feeCurrency ${entry.value}',
+                        'duration' => '${entry.value} minutes',
+                        _ => '${entry.value}',
+                      }),
+                      onDeleted: loading || loadingMore ? null : () => removeFilter(entry.key),
+                    ),
+              ],
+            ),
+            const SizedBox(height: 16),
           ],
-          if (missingRates)
-            const Text('Some estimates are unavailable. Original prices are still shown; a fee cap excludes prices we cannot compare.'),
-          const SizedBox(height: 12),
-          TextField(
-            controller: query,
-            maxLength: 100,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              labelText: 'Search by name',
-              counterText: '',
-            ),
-            onSubmitted: (_) { if (!loading && !loadingMore) apply(); },
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton(
-            onPressed: loading || specialties.isEmpty ? null : chooseSpecialties,
-            child: Text(selectedSpecialties.isEmpty
-                ? 'Any specialty'
-                : '${selectedSpecialties.length} specialties selected'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: maxFee,
-            decoration: InputDecoration(
-              labelText: feeCurrency.isEmpty ? 'Maximum fee' : 'Maximum fee ($feeCurrency)',
-              hintText: 'Any price',
-              error: inlineFieldError(feeError),
-            ),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          ),
-          const SizedBox(height: 12),
-          DropdownButton<int>(
-            value: duration,
-            hint: const Text('Any session duration'),
-            isExpanded: true,
-            items: [
-              const DropdownMenuItem(value: null, child: Text('Any session duration')),
-              for (final value in {...durations, if (duration != null) duration!})
-                DropdownMenuItem(value: value, child: Text('$value minutes')),
-            ],
-            onChanged: loading ? null : (value) => setState(() => duration = value),
-          ),
-          Wrap(
-            spacing: 8,
-            children: [
-              OutlinedButton(onPressed: loading || loadingMore ? null : apply, child: const Text('Apply filters')),
-              TextButton(onPressed: loading || loadingMore ? null : clear, child: const Text('Clear all')),
-            ],
-          ),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final entry in applied.entries)
-                if (entry.key == 'fee_currency')
-                  const SizedBox.shrink()
-                else if (entry.key == 'specialties')
-                  for (final value in (entry.value as String).split(','))
-                    InputChip(label: Text(value), onDeleted: loading || loadingMore ? null : () => removeFilter(entry.key, value))
-                else
-                  InputChip(
-                    label: Text(switch (entry.key) {
-                      'max_fee' => 'Up to $feeCurrency ${entry.value}',
-                      'duration' => '${entry.value} minutes',
-                      _ => '${entry.value}',
-                    }),
-                    onDeleted: loading || loadingMore ? null : () => removeFilter(entry.key),
-                  ),
-            ],
-          ),
-          const SizedBox(height: 16),
           if (loading)
             const Center(child: CircularProgressIndicator(semanticsLabel: 'Loading therapists'))
           else if (error != null)
