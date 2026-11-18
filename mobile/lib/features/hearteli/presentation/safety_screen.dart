@@ -41,7 +41,10 @@ class _SafetyScreenState extends State<SafetyScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(),
+    appBar: AppBar(
+      leading: const BackButton(),
+      title: const Text('Immediate support'),
+    ),
     body: ListView(
       padding: screenPadding.add(
         EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),

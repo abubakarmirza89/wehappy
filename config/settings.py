@@ -1,5 +1,6 @@
 
 from pathlib import Path
+from urllib.parse import urlsplit
 import environ
 
 # Apply Python 3.14 compatibility patch for Django templates
@@ -290,6 +291,12 @@ TWILIO_PHONE_NUMBER = env("TWILIO_PHONE_NUMBER", default="")
 # Set this to the verified HTTPS origin; reset links never trust request Host.
 HEARTELI_WORK_SUPPORT_EMAIL = env('HEARTELI_WORK_SUPPORT_EMAIL', default='')
 HEARTELI_PUBLIC_URL = env("HEARTELI_PUBLIC_URL", default="http://localhost:8000")
+CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
+public_origin = urlsplit(HEARTELI_PUBLIC_URL)
+if public_origin.scheme in {"http", "https"} and public_origin.netloc:
+    canonical_origin = f"{public_origin.scheme}://{public_origin.netloc}"
+    if canonical_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(canonical_origin)
 HEARTELI_EMAIL_MESSAGE_DOMAIN = env("HEARTELI_EMAIL_MESSAGE_DOMAIN", default="hearteli.local")
 PASSWORD_RESET_TIMEOUT = 3600
 

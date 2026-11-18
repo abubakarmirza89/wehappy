@@ -59,7 +59,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(),
+    appBar: AppBar(
+      leading: const BackButton(),
+      title: const Text('Notifications'),
+    ),
     body: RefreshIndicator(
       onRefresh: load,
       child: ListView(

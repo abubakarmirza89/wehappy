@@ -30,6 +30,7 @@ class SettingsScreen extends StatelessWidget {
   final SessionStore sessionStore;
   @override
   Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(leading: const BackButton(), title: const Text('Settings')),
     body: ListView(
       padding: screenPadding,
       children: [
@@ -218,7 +219,10 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Privacy & Consent')),
+    appBar: AppBar(
+      leading: const BackButton(),
+      title: const Text('Privacy & Consent'),
+    ),
     body: RefreshIndicator(
       onRefresh: load,
       child: ListView(
@@ -262,6 +266,7 @@ class _PrivacyCenterState extends State<PrivacyCenter> {
                     builder:
                         (_) => Scaffold(
                           appBar: AppBar(
+                            leading: const BackButton(),
                             title: const Text('Circle permissions'),
                           ),
                           body: CircleScreen(
@@ -554,7 +559,10 @@ class _NotificationSettingsState extends State<NotificationSettings>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Notifications & quiet hours')),
+    appBar: AppBar(
+      leading: const BackButton(),
+      title: const Text('Notifications & quiet hours'),
+    ),
     body: ListView(
       padding: screenPadding.add(
         EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
@@ -842,7 +850,10 @@ class _DataSettingsState extends State<DataSettings> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Your data')),
+    appBar: AppBar(
+      leading: const BackButton(),
+      title: const Text('Your data'),
+    ),
     body: ListView(
       padding: screenPadding,
       children: [

@@ -39,6 +39,86 @@ class MonetisationTests(TestCase):
                                 'time': '10:00', 'location': 'Online', 'reason': 'Support'})
         self.assertEqual(result.status_code, 400)
 
+    def test_directory_publication_sends_welcome_email_once(self):
+        from django.contrib import admin
+        from django.core import mail
+        from django.test import RequestFactory
+        from unittest.mock import patch
+        from apps.users.commercial_admin import VerificationAdmin
+
+        self.profile.directory_published_at = None
+        self.profile.save(update_fields=['directory_published_at'])
+        request = RequestFactory().post('/admin/')
+        request.user = self.admin
+        therapist_admin = VerificationAdmin(Therapist, admin.site)
+
+        with patch.object(therapist_admin, 'message_user'):
+            with self.captureOnCommitCallbacks(execute=True):
+                therapist_admin.publish_directory(
+                    request,
+                    Therapist.objects.filter(pk=self.profile.pk),
+                )
+
+        delivery = EmailDelivery.objects.get(
+            recipient=self.therapist,
+            kind='therapist_directory_approved',
+        )
+        self.assertEqual(delivery.status, 'sent')
+        self.assertEqual(delivery.path, '/practice/login/')
+        self.assertIn('application for listing as a therapist', delivery.message)
+        self.assertIn('Welcome to our practitioner community', delivery.message)
+        sent_email = mail.outbox[-1]
+        self.assertEqual(
+            sent_email.subject,
+            'Welcome to the Hearteli therapist directory',
+        )
+        self.assertEqual(sent_email.to, [self.therapist.email])
+        self.assertIn('Open your practice portal', sent_email.alternatives[0][0])
+        self.assertIn('/practice/login/', sent_email.alternatives[0][0])
+
+        with patch.object(therapist_admin, 'message_user'):
+            with self.captureOnCommitCallbacks(execute=True):
+                therapist_admin.publish_directory(
+                    request,
+                    Therapist.objects.filter(pk=self.profile.pk),
+                )
+        self.assertEqual(
+            EmailDelivery.objects.filter(
+                recipient=self.therapist,
+                kind='therapist_directory_approved',
+            ).count(),
+            1,
+        )
+
+    def test_unverified_profile_cannot_be_published_or_emailed(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+        from unittest.mock import patch
+        from apps.users.commercial_admin import VerificationAdmin
+
+        self.profile.directory_published_at = None
+        self.profile.verification_status = 'pending'
+        self.profile.save(update_fields=['directory_published_at', 'verification_status'])
+        request = RequestFactory().post('/admin/')
+        request.user = self.admin
+        therapist_admin = VerificationAdmin(Therapist, admin.site)
+
+        with patch.object(therapist_admin, 'message_user'):
+            with self.captureOnCommitCallbacks(execute=True):
+                therapist_admin.publish_directory(
+                    request,
+                    Therapist.objects.filter(pk=self.profile.pk),
+                )
+
+        self.profile.refresh_from_db()
+        self.assertIsNone(self.profile.directory_published_at)
+        self.assertFalse(
+            EmailDelivery.objects.filter(
+                recipient=self.therapist,
+                kind='therapist_directory_approved',
+            ).exists()
+        )
+
     def test_expired_verification_hidden_even_with_active_sponsorship(self):
         self.campaign();self.profile.verification_expires_at=self.now-timedelta(seconds=1);self.profile.save()
         self.assertEqual(self.search(),{'sponsored':[],'organic':[]})

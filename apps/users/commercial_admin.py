@@ -123,6 +123,8 @@ class VerificationAdmin(AuditedAdmin):
     list_display = ['user', 'verification_status', 'verification_expires_at',
                     'directory_published_at', 'availability_status', 'last_activity_confirmation',
                     'activity_status', 'last_login']
+    list_filter = ['verification_status', 'availability_status']
+    search_fields = ['user__name', 'user__email', 'registration_number', 'registration_body']
     readonly_fields = ['verified_by', 'verified_at', 'directory_published_at',
                        'last_activity_confirmation', 'last_availability_update', 'referral_code', 'last_login']
     actions = ['publish_directory', 'unpublish_directory']
@@ -144,9 +146,11 @@ class VerificationAdmin(AuditedAdmin):
             obj.verified_at = timezone.now()
         super().save_model(request, obj, form, change)
 
-    @admin.action(permissions=['change'], description='Publish selected reviewed profiles to the directory')
+    @admin.action(permissions=['change'], description='Approve and publish selected verified profiles to the directory')
     def publish_directory(self, request, queryset):
         from django.db import transaction
+        from .communications import dispatch_email_batch, queue_email
+
         with transaction.atomic():
             for obj in queryset.select_for_update().select_related('user'):
                 if not obj.verified or not obj.user.is_active or not obj.user.is_therapist:
@@ -157,7 +161,43 @@ class VerificationAdmin(AuditedAdmin):
                     obj.save(update_fields=['directory_published_at'])
                     CommercialAudit.objects.create(actor=request.user, object_type='Therapist',
                                                    object_id=str(obj.pk), action='directory_published')
-                    self.message_user(request, f'{obj.user.name} is approved for directory publication.')
+                    delivery = queue_email(
+                        obj.user,
+                        'therapist_directory_approved',
+                        'Welcome to the Hearteli therapist directory',
+                        (
+                            f'Hi {obj.user.name},\n\n'
+                            'Your professional credentials have been reviewed, and your '
+                            'application for listing as a therapist on Hearteli has been '
+                            'approved. Welcome to our practitioner community.\n\n'
+                            'Sign in to your practice portal to complete your profile, '
+                            'confirm your availability, and manage your approved session '
+                            'options. Public search visibility also depends on your profile '
+                            'being active and available to accept clients.\n\n'
+                            'If you have questions, reply to this email and our team will '
+                            'be happy to help.'
+                        ),
+                        key=(
+                            f'therapist-directory-approved:{obj.pk}:'
+                            f'{obj.directory_published_at.isoformat()}'
+                        ),
+                        path='/practice/login/',
+                        in_app_message=(
+                            'Your application for listing as a therapist on Hearteli '
+                            'has been approved. Welcome to our practitioner community.'
+                        ),
+                    )
+                    if delivery and delivery.status in ('pending', 'retry'):
+                        transaction.on_commit(
+                            lambda delivery_id=delivery.pk: dispatch_email_batch(
+                                limit=1, delivery_ids=[delivery_id]
+                            ),
+                            robust=True,
+                        )
+                    self.message_user(
+                        request,
+                        f'{obj.user.name} is approved for directory publication.',
+                    )
 
     @admin.action(permissions=['change'], description='Unpublish selected directory profiles')
     def unpublish_directory(self, request, queryset):

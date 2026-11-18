@@ -1,10 +1,11 @@
 import hashlib
+import re
 from urllib.parse import parse_qs, urlparse
 from datetime import timedelta
 
 from django.core import mail
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 from apps.users.models import BusinessSubscription
 from apps.users.tests.billing_helpers import active_subscription
@@ -45,6 +46,32 @@ class WorkConsoleTests(TestCase):
         response = self.client.get(f'/work/{self.workspace.pk}/')
         self.assertContains(response, 'Overview')
         self.assertNotContains(response, 'Invite a member')
+
+    @override_settings(CSRF_TRUSTED_ORIGINS=['https://hearteli.test'])
+    def test_web_logout_forms_accept_the_trusted_public_origin(self):
+        client = Client(enforce_csrf_checks=True)
+
+        for page, logout_path, redirect_to in (
+            ('/work/', '/work/logout/', '/work/login/'),
+            ('/practice/apply/', '/practice/logout/', '/practice/login/'),
+        ):
+            client.force_login(self.owner)
+            page_response = client.get(page)
+            self.assertEqual(page_response.status_code, 200)
+            csrf_match = re.search(
+                rb'name="csrfmiddlewaretoken" value="([^"]+)"',
+                page_response.content,
+            )
+            self.assertIsNotNone(csrf_match)
+
+            response = client.post(
+                logout_path,
+                {'csrfmiddlewaretoken': csrf_match.group(1).decode()},
+                HTTP_ORIGIN='https://hearteli.test',
+            )
+
+            self.assertRedirects(response, redirect_to)
+            self.assertNotIn('_auth_user_id', client.session)
 
     def verify_and_login(self, email, password='StrongerPass123!'):
         from apps.users.email_verification import email_token

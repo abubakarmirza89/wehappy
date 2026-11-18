@@ -329,6 +329,7 @@ def dispatch_email_batch(limit=100, delivery_ids=None):
                                'verify_email': 'Verify email',
                                'circle_invite': 'View invitation',
                                'nudge': 'Open Hearteli',
+                               'therapist_directory_approved': 'Open your practice portal',
                            }.get(delivery.kind, '' if delivery.kind == 'password_changed' else 'Open Hearteli'),
                            'logo_url': urljoin(
                                settings.HEARTELI_PUBLIC_URL.rstrip('/') + '/',
