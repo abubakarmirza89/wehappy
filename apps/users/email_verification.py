@@ -1,4 +1,6 @@
 """Verify possession of new self-service account email addresses."""
+from copy import copy
+
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.db import transaction
 from django.shortcuts import render
@@ -20,10 +22,30 @@ class EmailToken(PasswordResetTokenGenerator):
     key_salt = 'hearteli.email-verification.v1'
 
     def _make_hash_value(self, user, timestamp):
+        return (
+            f'{user.pk}:{user.password}:{user.email}:'
+            f'{user.email_verification_required}:{timestamp}'
+        )
+
+
+class LegacyEmailToken(PasswordResetTokenGenerator):
+    key_salt = 'hearteli.email-verification.v1'
+
+    def _make_hash_value(self, user, timestamp):
         return f'{user.pk}:{user.password}:{user.email}:{user.email_verified_at}:{timestamp}'
 
 
 email_token = EmailToken()
+legacy_email_token = LegacyEmailToken()
+
+
+def valid_email_token(user, token):
+    if email_token.check_token(user, token):
+        return True
+    legacy_user = copy(user) if user.email_verified_at else user
+    if legacy_user is not user:
+        legacy_user.email_verified_at = None
+    return legacy_email_token.check_token(legacy_user, token)
 
 
 def needs_verification(user):
@@ -77,12 +99,16 @@ class ResendVerificationView(APIView):
 def verify_email(request, pk, token):
     with transaction.atomic():
         user = User.objects.select_for_update().filter(pk=pk, is_active=True).first()
-        valid = bool(user and needs_verification(user) and email_token.check_token(user, token))
-        verified = valid and request.method == 'POST'
-        if verified:
+        valid = bool(
+            user
+            and user.email_verification_required
+            and valid_email_token(user, token)
+        )
+        verified = valid
+        if valid and needs_verification(user):
             user.email_verified_at = timezone.now()
             user.save(update_fields=['email_verified_at'])
-    response = render(request, 'work/verify_email.html', {'valid': valid, 'verified': verified,
+    response = render(request, 'work/verify_email.html', {'verified': verified,
                        'circle_next': request.session.get('circle_invitation_next') if verified else None},
                       status=200 if valid else 400)
     response['Cache-Control'] = 'no-store'

@@ -14,6 +14,7 @@
 .password-field{display:block;position:relative;width:100%}.password-field input{padding-right:52px!important}.password-toggle{position:absolute;top:50%;right:7px;transform:translateY(-50%);display:grid;place-items:center;width:36px;height:36px;padding:7px;background:transparent!important;color:var(--grey)!important;border:0!important;border-radius:8px;cursor:pointer}.password-toggle:hover{background:#f1f5f9!important;color:var(--navy)!important}.password-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.password-toggle[aria-pressed="false"] svg:last-child,.password-toggle[aria-pressed="true"] svg:first-child{display:none}
 .card,.panel,.kpi,.workspace-message,.privacy-strip,.error{margin-bottom:16px}
 .workspace-message.error{background:#fff0ef;color:#af302a}.workspace-message.success{background:#e8f7ef;color:#176b3a}
+.verification-success-icon{display:grid;place-items:center;width:64px;height:64px;margin:0 auto 18px;border-radius:50%;background:#e8f7ef;color:#176b3a;font-size:40px;font-weight:900;line-height:1}
 
 /* Workplace dashboard and reset form */
 :is(.work-console,.work-index,.reset-card) :focus-visible {

@@ -2,12 +2,10 @@
 {% block content %}
 <section class="card auth-card">
 {% if verified %}
-<h1>Email confirmed</h1><p>You can now sign in. If you received a Circle invitation, reopen its link to review it.</p>
+<div class="verification-success-icon" aria-hidden="true">✓</div>
+<h1>Email verified successfully</h1><p role="status">Your email is confirmed. You can now sign in. If you received a Circle invitation, reopen its link to review it.</p>
 {% elif pending %}
 <h1>Check your email</h1><p>Open your verification link before signing in. If you did not receive it, use Resend verification in the Hearteli app.</p>
-{% elif valid %}
-<h1>Confirm your email</h1><p>Confirm to finish setting up your Hearteli account.</p>
-<form method="post">{% csrf_token %}<button>Verify email</button></form>
 {% else %}
 <h1>Verification link unavailable</h1><p>This link may have expired or already been used. If needed, request a new link in the app.</p>
 {% endif %}

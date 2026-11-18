@@ -51,7 +51,7 @@ class WorkConsoleTests(TestCase):
         user = get_user_model().objects.get(email=email)
         self.assertEqual(self.client.post('/work/login/', {'username': email, 'password': password}).status_code, 200)
         self.assertNotIn('_auth_user_id', self.client.session)
-        self.assertContains(self.client.post(f'/verify-email/{user.pk}/{email_token.make_token(user)}/'), 'Email confirmed')
+        self.assertContains(self.client.get(f'/verify-email/{user.pk}/{email_token.make_token(user)}/'), 'Email verified successfully')
         self.assertRedirects(self.client.post('/work/login/', {'username': email, 'password': password}), '/work/')
 
     def test_new_owner_can_register_and_create_workplace(self):
